@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Register from './pages/Register';
 import Inventory from './pages/Inventory';
@@ -63,7 +63,7 @@ const Home = () => {
 
 function App() {
     return (
-        <Router basename="/life_line">
+        <Router>
             <div className="text-white">
                 <Navbar />
                 <Routes>

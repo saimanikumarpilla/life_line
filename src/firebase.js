@@ -16,8 +16,18 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-export const db = getFirestore(app);
+let app;
+let db;
+let analytics;
+
+if (firebaseConfig.apiKey) {
+  app = initializeApp(firebaseConfig);
+  analytics = getAnalytics(app);
+  db = getFirestore(app);
+} else {
+  console.warn("Firebase configuration is missing. Remote features will not work.");
+}
+
+export { db };
 
 export default app;
