@@ -2,19 +2,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { findMatchingDonors, sendNotification } from '../utils/bloodLogic';
 
-// Mock Data for demonstration before Firebase integration
-const MOCK_DONORS = [
-    { id: 1, name: 'Alice Smith', bloodGroup: 'A+', lastDonationDate: '2023-01-01', location: 'New York', phone: '+1 555-0101' },
-    { id: 2, name: 'Bob Jones', bloodGroup: 'O-', lastDonationDate: '2023-11-20', location: 'New York', phone: '+1 555-0102' },
-    { id: 3, name: 'Charlie Day', bloodGroup: 'A+', lastDonationDate: '2022-05-15', location: 'Brooklyn', phone: '+1 555-0103' },
-    { id: 4, name: 'David Miller', bloodGroup: 'O+', lastDonationDate: '2023-08-10', location: 'Queens', phone: '+1 555-0104' },
-    { id: 5, name: 'Eva Green', bloodGroup: 'AB+', lastDonationDate: '2023-02-20', location: 'Manhattan', phone: '+1 555-0105' },
-    { id: 6, name: 'Frank White', bloodGroup: 'A+', lastDonationDate: '2021-12-12', location: 'Bronx', phone: '+1 555-0106' },
-    { id: 7, name: 'Grace Lee', bloodGroup: 'O-', lastDonationDate: '2022-09-05', location: 'Staten Island', phone: '+1 555-0107' },
-    { id: 8, name: 'Henry Ford', bloodGroup: 'B+', lastDonationDate: '2023-03-30', location: 'Jersey City', phone: '+1 555-0108' },
-    { id: 9, name: 'Ivy Chen', bloodGroup: 'A-', lastDonationDate: '2023-06-18', location: 'New York', phone: '+1 555-0109' },
-    { id: 10, name: 'Jack Ryan', bloodGroup: 'AB-', lastDonationDate: '2023-01-25', location: 'Brooklyn', phone: '+1 555-0110' },
-];
+import { collection, query, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const RequestBlood = () => {
     const [requestData, setRequestData] = useState({
@@ -26,19 +15,36 @@ const RequestBlood = () => {
     const [matches, setMatches] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    const handleSearch = (e) => {
+    const handleSearch = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setMatches([]);
 
-        // Simulate API delay
-        setTimeout(() => {
-            const eligibleDonors = findMatchingDonors(requestData.bloodGroup, MOCK_DONORS);
-            setMatches(eligibleDonors);
+        try {
+            const donorsRef = collection(db, "donors");
+            const querySnapshot = await getDocs(donorsRef);
+            const allDonors = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+
+            const eligibleDonors = findMatchingDonors(requestData.bloodGroup, allDonors);
+            
+            // Filter by location if specified
+            const filteredDonors = requestData.location 
+                ? eligibleDonors.filter(d => 
+                    d.district?.toLowerCase().includes(requestData.location.toLowerCase()) || 
+                    d.nearestTown?.toLowerCase().includes(requestData.location.toLowerCase())
+                  )
+                : eligibleDonors;
+
+            setMatches(filteredDonors);
+        } catch (error) {
+            console.error("Error fetching donors: ", error);
+            alert("Failed to fetch donors. Please check your connection.");
+        } finally {
             setLoading(false);
-
-            // Auto-notify (Simulated)
-            eligibleDonors.forEach(donor => sendNotification(donor.id));
-        }, 1000);
+        }
     };
 
     return (
@@ -98,11 +104,11 @@ const RequestBlood = () => {
                                 className="bg-white/5 p-4 rounded-lg flex justify-between items-center border border-white/5 hover:border-blood-red/30 transition-all group"
                             >
                                 <div>
-                                    <div className="font-bold text-lg text-white group-hover:text-blood-red transition-colors">{donor.name}</div>
+                                    <div className="font-bold text-lg text-white group-hover:text-blood-red transition-colors">{donor.fullName}</div>
                                     <div className="text-sm text-gray-400 flex items-center gap-2">
-                                        <span>{donor.location}</span>
+                                        <span>{donor.nearestTown}, {donor.district}</span>
                                         <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
-                                        <span>Last Donation: {donor.lastDonationDate}</span>
+                                        <span>Last Donation: {donor.lastDonationDate ? new Date(donor.lastDonationDate).toLocaleDateString() : 'Never'}</span>
                                     </div>
                                     <div className="text-sm text-gray-300 mt-1 flex items-center gap-2">
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>

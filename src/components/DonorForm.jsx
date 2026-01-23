@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { apDistricts, apTowns } from '../utils/apData';
 
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CustomSelect from './CustomSelect';
 
 const DonorForm = () => {
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         fullName: '',
         bloodGroup: '',
@@ -27,11 +30,33 @@ const DonorForm = () => {
         setFormData({ ...formData, lastDonationDate: date });
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        console.log('Donor Registration Data:', formData);
-        // TODO: Add to Firebase
-        alert("Registration Successful!");
+        setIsSubmitting(true);
+        try {
+            await addDoc(collection(db, "donors"), {
+                ...formData,
+                lastDonationDate: formData.lastDonationDate ? formData.lastDonationDate.toISOString() : null,
+                createdAt: new Date().toISOString()
+            });
+            alert("Registration Successful! Verify you are eligible.");
+            setFormData({
+                fullName: '',
+                bloodGroup: '',
+                lastDonationDate: null,
+                phone: '',
+                email: '',
+                district: '',
+                nearestTown: '',
+                village: '',
+                distanceFromTown: ''
+            });
+        } catch (error) {
+            console.error("Error adding document: ", error);
+            alert("Error registering. Please try again.");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     // Get towns key based on district, handling potential mismatch or empty selection
@@ -170,8 +195,8 @@ const DonorForm = () => {
                     </div>
                 </div>
 
-                <button type="submit" className="btn-primary w-full py-3 text-lg">
-                    Register to Donate
+                <button type="submit" disabled={isSubmitting} className="btn-primary w-full py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isSubmitting ? 'Registering...' : 'Register to Donate'}
                 </button>
             </form>
         </motion.div >
