@@ -21,7 +21,7 @@ const RequestBlood = () => {
         setMatches([]);
 
         try {
-            const donorsRef = collection(db, "donors");
+            const donorsRef = collection(db, "donors_list");
             const querySnapshot = await getDocs(donorsRef);
             const allDonors = querySnapshot.docs.map(doc => ({
                 id: doc.id,
@@ -29,13 +29,13 @@ const RequestBlood = () => {
             }));
 
             const eligibleDonors = findMatchingDonors(requestData.bloodGroup, allDonors);
-            
+
             // Filter by location if specified
-            const filteredDonors = requestData.location 
-                ? eligibleDonors.filter(d => 
-                    d.district?.toLowerCase().includes(requestData.location.toLowerCase()) || 
+            const filteredDonors = requestData.location
+                ? eligibleDonors.filter(d =>
+                    d.district?.toLowerCase().includes(requestData.location.toLowerCase()) ||
                     d.nearestTown?.toLowerCase().includes(requestData.location.toLowerCase())
-                  )
+                )
                 : eligibleDonors;
 
             setMatches(filteredDonors);

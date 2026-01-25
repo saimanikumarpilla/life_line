@@ -33,8 +33,13 @@ const DonorForm = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
+        if (!db) {
+            alert("Firebase configuration is missing! Please check your .env file.");
+            setIsSubmitting(false);
+            return;
+        }
         try {
-            await addDoc(collection(db, "donors"), {
+            await addDoc(collection(db, "donors_list"), {
                 ...formData,
                 lastDonationDate: formData.lastDonationDate ? formData.lastDonationDate.toISOString() : null,
                 createdAt: new Date().toISOString()
@@ -53,7 +58,7 @@ const DonorForm = () => {
             });
         } catch (error) {
             console.error("Error adding document: ", error);
-            alert("Error registering. Please try again.");
+            alert("Error registering: " + error.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -81,7 +86,7 @@ const DonorForm = () => {
                             value={formData.fullName}
                             onChange={handleChange}
                             className="glass-input w-full"
-                            placeholder="John Doe"
+                            placeholder="Enter name"
                             required
                         />
                     </div>
@@ -103,7 +108,7 @@ const DonorForm = () => {
                             selected={formData.lastDonationDate}
                             onChange={handleDateChange}
                             className="glass-input w-full text-gray-300 cursor-pointer"
-                            placeholderText="Select Date"
+                            placeholderText="Enter last donation date"
                             dateFormat="dd/MM/yyyy"
                             maxDate={new Date()}
                             showYearDropdown
@@ -134,7 +139,7 @@ const DonorForm = () => {
                             value={formData.email}
                             onChange={handleChange}
                             className="glass-input w-full"
-                            placeholder="john@example.com"
+                            placeholder="Enter Email"
                             required
                         />
                     </div>

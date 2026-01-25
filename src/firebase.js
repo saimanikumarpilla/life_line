@@ -22,8 +22,11 @@ let analytics;
 
 if (firebaseConfig.apiKey) {
   app = initializeApp(firebaseConfig);
-  analytics = getAnalytics(app);
   db = getFirestore(app);
+  if (firebaseConfig.measurementId) {
+    analytics = getAnalytics(app);
+  }
+  console.log("Firebase initialized successfully with project:", firebaseConfig.projectId);
 } else {
   console.warn("Firebase configuration is missing. Remote features will not work.");
 }
