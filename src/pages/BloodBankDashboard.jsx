@@ -1,10 +1,76 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { collection, addDoc, deleteDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { compressImage } from '../utils/imageCompressor';
+import { db } from '../firebase';
 
 const BloodBankDashboard = () => {
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
+
+    // Photo Upload State
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoCaption, setPhotoCaption] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadedPhotos, setUploadedPhotos] = useState([]);
+
+    const fetchPhotos = async (email) => {
+        if (!db || !email) return;
+        try {
+            const q = query(collection(db, "camp_photos"), where("uploadedBy", "==", email));
+            const snapshot = await getDocs(q);
+            const photos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Client-side sort to avoid index requirements
+            photos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            setUploadedPhotos(photos);
+        } catch (error) {
+            console.error("Error fetching photos:", error);
+        }
+    };
+
+    const handleAddPhoto = async (e) => {
+        e.preventDefault();
+        setIsUploading(true);
+        if (!photoFile) {
+            alert("Please select an image file");
+            setIsUploading(false);
+            return;
+        }
+        try {
+            // Compress and convert to Base64
+            const base64Url = await compressImage(photoFile);
+
+            await addDoc(collection(db, "camp_photos"), {
+                url: base64Url,
+                caption: photoCaption,
+                uploadedBy: user.email || 'blood_bank',
+                createdAt: new Date().toISOString()
+            });
+            alert("Photo Added Successfully!");
+            setPhotoFile(null);
+            setPhotoCaption('');
+            fetchPhotos(user.email);
+            e.target.reset(); // Reset form
+        } catch (error) {
+            console.error("Error adding photo:", error);
+            alert("Error: " + error.message);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleDeletePhoto = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this photo?")) return;
+        try {
+            await deleteDoc(doc(db, "camp_photos", id));
+            alert("Photo deleted successfully!");
+            fetchPhotos(user.email);
+        } catch (error) {
+            console.error("Error deleting photo:", error);
+            alert("Failed to delete photo");
+        }
+    };
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -12,7 +78,9 @@ const BloodBankDashboard = () => {
             navigate('/login');
             return;
         }
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        fetchPhotos(parsedUser.email);
     }, [navigate]);
 
     if (!user) return null;
@@ -69,6 +137,68 @@ const BloodBankDashboard = () => {
 
                     {/* Quick Actions & Notifications */}
                     <div className="space-y-6">
+                        {/* Add Camp Photo Widget */}
+                        <div className="glass-card p-6">
+                            <h2 className="text-xl font-bold mb-4">Add Camp Photo</h2>
+                            <form onSubmit={handleAddPhoto} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">Upload Image</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => setPhotoFile(e.target.files[0])}
+                                        className="glass-input w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blood-red/20 file:text-blood-red hover:file:bg-blood-red/30 text-white"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <input
+                                        type="text"
+                                        value={photoCaption}
+                                        onChange={(e) => setPhotoCaption(e.target.value)}
+                                        className="glass-input w-full"
+                                        placeholder="Caption"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={isUploading}
+                                    className="btn-primary w-full py-2 disabled:opacity-50"
+                                >
+                                    {isUploading ? 'Uploading...' : 'Upload Photo'}
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Recent Uploads (Mini Gallery) */}
+                        {uploadedPhotos.length > 0 && (
+                            <div className="glass-card p-6">
+                                <h2 className="text-xl font-bold mb-4">Your Uploads</h2>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {uploadedPhotos.map((photo) => (
+                                        <div key={photo.id} className="relative group rounded-lg overflow-hidden border border-white/10 aspect-video">
+                                            <img
+                                                src={photo.url}
+                                                alt={photo.caption}
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button
+                                                    onClick={() => handleDeletePhoto(photo.id)}
+                                                    className="bg-red-600 text-white p-1.5 rounded-full hover:bg-red-700 transition-colors"
+                                                    title="Delete Photo"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="glass-card p-6">
                             <h2 className="text-xl font-bold mb-4">Actions</h2>
                             <div className="space-y-3">

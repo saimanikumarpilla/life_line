@@ -109,44 +109,106 @@ const Navbar = () => {
     );
 };
 
+import CampCarousel from './components/CampCarousel';
+
 const Home = () => {
+    // Only import 'Home' (the page) but avoid naming conflict with earlier 'Home' (icon) import if any?
+    // Wait, step 47 showed 'Home as HomeIcon'. So I can use 'Home' for the component name safely if it's top level.
+    // The previous code had `const Home = () => {`.
+
     return (
-        <div className="min-h-screen flex items-center justify-center p-6 pt-24 relative overflow-hidden">
+        <div className="min-h-screen p-6 pt-24 relative overflow-hidden flex flex-col justify-center">
             {/* Background Effects */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10">
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blood-red/20 rounded-full blur-[120px]" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
             </div>
 
-            <div className="max-w-4xl w-full text-center space-y-8 relative z-10">
-                <motion.h1
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-6xl md:text-7xl font-bold text-white tracking-tight"
-                >
-                    Save a Life, <br />
-                    <span className="text-blood-red">Give Blood.</span>
-                </motion.h1>
+            <div className="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
 
-                <motion.p
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-xl text-gray-400 max-w-2xl mx-auto"
-                >
-                    A centralized blood supply management system connecting donors with those in need.
-                    Join our community today.
-                </motion.p>
+                {/* Main Content (Left) */}
+                <div className="lg:col-span-2 space-y-8">
+                    <div className="text-left space-y-6">
+                        <motion.h1
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-5xl md:text-7xl font-bold text-white tracking-tight"
+                        >
+                            Save a Life, <br />
+                            <span className="text-blood-red">Give Blood.</span>
+                        </motion.h1>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
+                            className="text-xl text-gray-400 max-w-2xl"
+                        >
+                            A centralized blood supply management system connecting donors with those in need.
+                            Join our community today.
+                        </motion.p>
+                    </div>
+
+                    {/* Carousel Section */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                    >
+                        <CampCarousel />
+                    </motion.div>
+                </div>
+
+                {/* Sidebar Actions (Right) */}
+                <motion.aside
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.4 }}
-                    className="flex justify-center gap-4"
+                    className="lg:col-span-1 space-y-4"
                 >
-                    <Link to="/register" className="btn-primary block">Register as Donor</Link>
-                    <Link to="/recipient-login" className="px-6 py-2 rounded-lg border border-white/20 hover:bg-white/5 transition-all block">Request Blood</Link>
-                </motion.div>
+                    <div className="glass-card p-6 border border-white/10 space-y-6">
+                        <h3 className="text-xl font-bold text-white border-b border-white/10 pb-2">Quick Actions</h3>
+
+                        <div className="space-y-4">
+                            <Link to="/register" className="block group">
+                                <div className="p-4 rounded-xl bg-gradient-to-r from-blood-red to-red-600 hover:from-red-600 hover:to-blood-red transition-all shadow-lg hover:shadow-blood-red/25">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-lg text-white">Register as Donor</span>
+                                        <svg className="w-5 h-5 text-white transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-white/80 text-sm mt-1">Join the lifesavers community</p>
+                                </div>
+                            </Link>
+
+                            <Link to="/recipient-login" className="block group">
+                                <div className="p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-lg text-white">Request Blood</span>
+                                        <svg className="w-5 h-5 text-white transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-gray-400 text-sm mt-1">Find blood availability near you</p>
+                                </div>
+                            </Link>
+
+                            <Link to="/blood-banks-directory" className="block group">
+                                <div className="p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-lg text-white">View Directory</span>
+                                        <svg className="w-5 h-5 text-white transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m8-2a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-gray-400 text-sm mt-1">Registered Blood Banks</p>
+                                </div>
+                            </Link>
+                        </div>
+                    </div>
+                </motion.aside>
+
             </div>
         </div>
     )
