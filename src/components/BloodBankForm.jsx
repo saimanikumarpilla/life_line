@@ -2,14 +2,20 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { apDistricts, apTowns } from '../utils/apData';
+import CustomSelect from './CustomSelect';
 
 const BloodBankForm = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         bloodBankName: '',
+        category: 'Hospital', // Default
         email: '',
         password: '',
         contactNumber: '',
+        address: '',
+        district: '',
+        town: '',
         testingFacilities: '',
         processingFacilities: '',
         storageCapacity: ''
@@ -46,9 +52,13 @@ const BloodBankForm = () => {
             alert("Blood Bank Registration Successful!");
             setFormData({
                 bloodBankName: '',
+                category: 'Hospital',
                 email: '',
                 password: '',
                 contactNumber: '',
+                address: '',
+                district: '',
+                town: '',
                 testingFacilities: '',
                 processingFacilities: '',
                 storageCapacity: ''
@@ -60,6 +70,8 @@ const BloodBankForm = () => {
             setIsSubmitting(false);
         }
     };
+
+    const availableTowns = formData.district ? apTowns[formData.district] || [] : [];
 
     return (
         <motion.div
@@ -108,6 +120,56 @@ const BloodBankForm = () => {
                             minLength={6}
                         />
                     </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">Category</label>
+                    <select
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        className="glass-input w-full text-gray-300 [&>option]:text-gray-900"
+                    >
+                        <option value="Hospital">Hospital</option>
+                        <option value="Voluntary">Voluntary</option>
+                        <option value="Private">Private</option>
+                        <option value="Red Cross">Red Cross</option>
+                        <option value="Charity">Charity</option>
+                    </select>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">Address</label>
+                    <textarea
+                        name="address"
+                        value={formData.address}
+                        onChange={handleChange}
+                        className="glass-input w-full h-20 pt-2"
+                        placeholder="Full Address"
+                        required
+                    />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <CustomSelect
+                        label="District"
+                        name="district"
+                        value={formData.district}
+                        onChange={handleChange}
+                        options={apDistricts}
+                        placeholder="Select District"
+                        required
+                    />
+                    <CustomSelect
+                        label="Town"
+                        name="town"
+                        value={formData.town}
+                        onChange={handleChange}
+                        options={availableTowns}
+                        placeholder={formData.district ? 'Select Town' : 'Select District First'}
+                        disabled={!formData.district}
+                        required
+                    />
                 </div>
 
                 <div className="space-y-2">

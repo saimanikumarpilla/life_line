@@ -11,67 +11,101 @@ import RecipientLogin from './pages/RecipientLogin';
 import RecipientDashboard from './pages/RecipientDashboard';
 import BloodBanksDirectory from './pages/BloodBanksDirectory';
 
+import { Home as HomeIcon, Building2, Package, LogIn, LogOut, User } from 'lucide-react';
+
 const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    // isDashboard is arguably not needed for the new logic, but keeping it if we need it later won't hurt, 
-    // unless it was the only thing used. We are now using user object.
 
     const handleLogout = () => {
         localStorage.removeItem('user');
         navigate('/login');
     };
 
+    const user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
+    let homeLink = "/";
+    const allowedRoles = ['blood_bank', 'hospital', 'admin', 'donor'];
+    const showInventory = user && allowedRoles.includes(user.userType);
+
+    if (user) {
+        switch (user.userType) {
+            case 'donor': homeLink = "/donor-dashboard"; break;
+            case 'hospital': homeLink = "/hospital-dashboard"; break;
+            case 'blood_bank': homeLink = "/blood-bank-dashboard"; break;
+            case 'admin': homeLink = "/admin-dashboard"; break;
+            case 'recipient': homeLink = "/recipient-dashboard"; break;
+            default: homeLink = "/";
+        }
+    }
+
+    const isActive = (path) => location.pathname === path;
+
     return (
-        <nav className="fixed w-full z-50 top-0 left-0 px-6 py-4">
-            <div className="glass-card max-w-7xl mx-auto px-6 py-3 flex justify-between items-center bg-gray-900/40 backdrop-blur-md border-white/10">
-                <Link to="/" className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blood-red to-red-400">
-                    LifeLine
-                </Link>
-                <div className="flex space-x-6 text-gray-300 items-center">
-                    {(() => {
-                        const user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
-                        let homeLink = "/";
-                        const allowedRoles = ['blood_bank', 'hospital', 'admin', 'donor'];
-                        const showInventory = user && allowedRoles.includes(user.userType);
+        <>
+            {/* Desktop Navigation (Floating Top) */}
+            <nav className="hidden md:block fixed w-full z-50 top-0 left-0 px-6 py-4">
+                <div className="glass-card max-w-7xl mx-auto px-6 py-3 flex justify-between items-center bg-gray-900/40 backdrop-blur-md border-white/10">
+                    <Link to="/" className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blood-red to-red-400">
+                        LifeLine
+                    </Link>
+                    <div className="flex space-x-6 text-gray-300 items-center">
+                        <Link to={homeLink} className={`hover:text-white transition-colors ${isActive(homeLink) ? 'text-white font-medium' : ''}`}>Home</Link>
+                        <Link to="/blood-banks-directory" className={`hover:text-white transition-colors ${isActive('/blood-banks-directory') ? 'text-white font-medium' : ''}`}>Blood Banks</Link>
+                        {showInventory && (
+                            <Link to="/inventory" className={`hover:text-white transition-colors ${isActive('/inventory') ? 'text-white font-medium' : ''}`}>Inventory</Link>
+                        )}
 
-                        if (user) {
-                            switch (user.userType) {
-                                case 'donor': homeLink = "/donor-dashboard"; break;
-                                case 'hospital': homeLink = "/hospital-dashboard"; break;
-                                case 'blood_bank': homeLink = "/blood-bank-dashboard"; break;
-                                case 'admin': homeLink = "/admin-dashboard"; break;
-                                case 'recipient': homeLink = "/recipient-dashboard"; break;
-                                default: homeLink = "/";
-                            }
-                        }
-
-                        return (
-                            <>
-                                <Link to={homeLink} className="hover:text-white transition-colors">Home</Link>
-                                <Link to="/blood-banks-directory" className="hover:text-white transition-colors">Blood Banks</Link>
-                                {showInventory && (
-                                    <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
-                                )}
-
-                                {!user ? (
-                                    <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
-                                        Login
-                                    </Link>
-                                ) : (
-                                    <button
-                                        onClick={handleLogout}
-                                        className="px-4 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all text-sm font-medium"
-                                    >
-                                        Sign Out
-                                    </button>
-                                )}
-                            </>
-                        );
-                    })()}
+                        {!user ? (
+                            <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
+                                Login
+                            </Link>
+                        ) : (
+                            <button
+                                onClick={handleLogout}
+                                className="px-4 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all text-sm font-medium"
+                            >
+                                Sign Out
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </nav>
+            </nav>
+
+            {/* Mobile Navigation (Fixed Bottom) */}
+            <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-[#0f172a]/95 backdrop-blur-lg border-t border-white/10 px-6 py-3 pb-safe flex justify-between items-center">
+                <Link to={homeLink} className={`flex flex-col items-center gap-1 transition-colors ${isActive(homeLink) ? 'text-blood-red' : 'text-gray-400'}`}>
+                    <HomeIcon size={20} />
+                    <span className="text-[10px] font-medium">Home</span>
+                </Link>
+
+                <Link to="/blood-banks-directory" className={`flex flex-col items-center gap-1 transition-colors ${isActive('/blood-banks-directory') ? 'text-blood-red' : 'text-gray-400'}`}>
+                    <Building2 size={20} />
+                    <span className="text-[10px] font-medium">Banks</span>
+                </Link>
+
+                {showInventory && (
+                    <Link to="/inventory" className={`flex flex-col items-center gap-1 transition-colors ${isActive('/inventory') ? 'text-blood-red' : 'text-gray-400'}`}>
+                        <Package size={20} />
+                        <span className="text-[10px] font-medium">Stocks</span>
+                    </Link>
+                )}
+
+                {!user ? (
+                    <Link to="/login" className={`flex flex-col items-center gap-1 transition-colors ${isActive('/login') ? 'text-blood-red' : 'text-gray-400'}`}>
+                        <LogIn size={20} />
+                        <span className="text-[10px] font-medium">Login</span>
+                    </Link>
+                ) : (
+                    <button
+                        onClick={handleLogout}
+                        className="flex flex-col items-center gap-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                        <LogOut size={20} />
+                        <span className="text-[10px] font-medium">Logout</span>
+                    </button>
+                )}
+            </nav>
+        </>
     );
 };
 

@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const bloodBanksData = [
     // Vizag List
@@ -306,12 +308,38 @@ const bloodBanksData = [
 const BloodBanksDirectory = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [locationFilter, setLocationFilter] = useState('All');
+    const [fetchedBanks, setFetchedBanks] = useState([]);
 
-    const locations = ['All', ...new Set(bloodBanksData.map(item => item.location))];
+    useEffect(() => {
+        const fetchBloodBanks = async () => {
+            if (!db) return;
+            try {
+                const querySnapshot = await getDocs(collection(db, "blood_banks_list"));
+                const banks = querySnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    name: doc.data().bloodBankName,
+                    location: doc.data().town || doc.data().district || doc.data().city || 'Unknown',
+                    address: doc.data().address,
+                    contact: doc.data().contactNumber,
+                    category: doc.data().category || 'Blood Bank'
+                }));
+                // Filter out any invalid entries if necessary
+                setFetchedBanks(banks);
+            } catch (error) {
+                console.error("Error fetching blood banks: ", error);
+            }
+        };
 
-    const filteredBanks = bloodBanksData.filter(bank => {
-        const matchesSearch = bank.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            bank.address.toLowerCase().includes(searchTerm.toLowerCase());
+        fetchBloodBanks();
+    }, []);
+
+    const allBanks = [...bloodBanksData, ...fetchedBanks];
+
+    const locations = ['All', ...new Set(allBanks.map(item => item.location).filter(Boolean))];
+
+    const filteredBanks = allBanks.filter(bank => {
+        const matchesSearch = bank.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            bank.address?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesLocation = locationFilter === 'All' || bank.location === locationFilter;
         return matchesSearch && matchesLocation;
     });
