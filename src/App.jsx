@@ -1,22 +1,55 @@
-import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Register from './pages/Register';
 import Inventory from './pages/Inventory';
+import Login from './pages/Login';
+import DonorDashboard from './pages/DonorDashboard';
+import HospitalDashboard from './pages/HospitalDashboard';
+import BloodBankDashboard from './pages/BloodBankDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
-const Navbar = () => (
-    <nav className="fixed w-full z-50 top-0 left-0 px-6 py-4">
-        <div className="glass-card max-w-7xl mx-auto px-6 py-3 flex justify-between items-center bg-gray-900/40 backdrop-blur-md border-white/10">
-            <Link to="/" className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blood-red to-red-400">
-                LifeLine
-            </Link>
-            <div className="flex space-x-6 text-gray-300">
-                <Link to="/" className="hover:text-white transition-colors">Home</Link>
-                <Link to="/register" className="hover:text-white transition-colors">Donate</Link>
-                <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
+const Navbar = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
+    const isDashboard = ['/donor-dashboard', '/hospital-dashboard', '/blood-bank-dashboard', '/admin-dashboard'].includes(location.pathname);
+
+    const handleLogout = () => {
+        localStorage.removeItem('user');
+        navigate('/login');
+    };
+
+    return (
+        <nav className="fixed w-full z-50 top-0 left-0 px-6 py-4">
+            <div className="glass-card max-w-7xl mx-auto px-6 py-3 flex justify-between items-center bg-gray-900/40 backdrop-blur-md border-white/10">
+                <Link to="/" className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blood-red to-red-400">
+                    LifeLine
+                </Link>
+                <div className="flex space-x-6 text-gray-300 items-center">
+                    <Link to="/" className="hover:text-white transition-colors">Home</Link>
+                    {!isDashboard ? (
+                        <>
+
+                            <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
+                            <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
+                                Login
+                            </Link>
+                        </>
+                    ) : (
+                        <>
+                            <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
+                            <button
+                                onClick={handleLogout}
+                                className="px-4 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all text-sm font-medium"
+                            >
+                                Sign Out
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
-    </nav>
-);
+        </nav>
+    );
+};
 
 const Home = () => {
     return (
@@ -70,6 +103,13 @@ function App() {
                     <Route path="/" element={<Home />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/inventory" element={<Inventory />} />
+                    <Route path="/login" element={<Login />} />
+
+                    {/* Secured Routes (Auth logic handled in components for now) */}
+                    <Route path="/donor-dashboard" element={<DonorDashboard />} />
+                    <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
+                    <Route path="/blood-bank-dashboard" element={<BloodBankDashboard />} />
+                    <Route path="/admin-dashboard" element={<AdminDashboard />} />
                 </Routes>
             </div>
         </Router>

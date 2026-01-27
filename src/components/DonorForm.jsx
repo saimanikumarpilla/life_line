@@ -16,6 +16,7 @@ const DonorForm = () => {
         lastDonationDate: null,
         phone: '',
         email: '',
+        password: '',
         district: '',
         nearestTown: '',
         village: '',
@@ -39,11 +40,22 @@ const DonorForm = () => {
             return;
         }
         try {
-            await addDoc(collection(db, "donors_list"), {
+            // 1. Add to donors_list collection (Profile)
+            const donorRef = await addDoc(collection(db, "donors_list"), {
                 ...formData,
                 lastDonationDate: formData.lastDonationDate ? formData.lastDonationDate.toISOString() : null,
                 createdAt: new Date().toISOString()
             });
+
+            // 2. Add to login_details collection (Credentials)
+            await addDoc(collection(db, "login_details"), {
+                email: formData.email,
+                password: formData.password, // Note: storing password in plain text as requested, but security warning: hashing recommended in production
+                userType: 'donor',
+                profileId: donorRef.id,
+                createdAt: new Date().toISOString()
+            });
+
             alert("Registration Successful! Verify you are eligible.");
             setFormData({
                 fullName: '',
@@ -51,6 +63,7 @@ const DonorForm = () => {
                 lastDonationDate: null,
                 phone: '',
                 email: '',
+                password: '',
                 district: '',
                 nearestTown: '',
                 village: '',
@@ -143,6 +156,20 @@ const DonorForm = () => {
                             required
                         />
                     </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">Password</label>
+                    <input
+                        type="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="glass-input w-full"
+                        placeholder="Create a password"
+                        required
+                        minLength={6}
+                    />
                 </div>
 
                 {/* Location Details for AP */}
