@@ -1,19 +1,29 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { findMatchingDonors, sendNotification } from '../utils/bloodLogic';
-
 import { collection, query, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { apDistricts, apTowns } from '../utils/apData';
+import CustomSelect from './CustomSelect';
 
 const RequestBlood = () => {
     const [requestData, setRequestData] = useState({
         patientName: '',
         bloodGroup: '',
-        location: '',
+        district: '',
+        nearestTown: '',
         urgency: 'Normal'
     });
     const [matches, setMatches] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    // Get towns key based on district
+    const availableTowns = requestData.district ? apTowns[requestData.district] || [] : [];
+    const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+    const handleChange = (e) => {
+        setRequestData({ ...requestData, [e.target.name]: e.target.value });
+    };
 
     const handleSearch = async (e) => {
         e.preventDefault();
@@ -30,13 +40,16 @@ const RequestBlood = () => {
 
             const eligibleDonors = findMatchingDonors(requestData.bloodGroup, allDonors);
 
-            // Filter by location if specified
-            const filteredDonors = requestData.location
-                ? eligibleDonors.filter(d =>
-                    d.district?.toLowerCase().includes(requestData.location.toLowerCase()) ||
-                    d.nearestTown?.toLowerCase().includes(requestData.location.toLowerCase())
-                )
-                : eligibleDonors;
+            // Filter by location (District and Town) if specified
+            const filteredDonors = eligibleDonors.filter(d => {
+                // If district is selected in search, donor must match district
+                const matchDistrict = !requestData.district || (d.district && d.district === requestData.district);
+
+                // If town is selected in search, donor must match town
+                const matchTown = !requestData.nearestTown || (d.nearestTown && d.nearestTown === requestData.nearestTown);
+
+                return matchDistrict && matchTown;
+            });
 
             setMatches(filteredDonors);
         } catch (error) {
@@ -61,27 +74,40 @@ const RequestBlood = () => {
                         <input
                             className="glass-input w-full"
                             placeholder="Patient Name"
-                            onChange={(e) => setRequestData({ ...requestData, patientName: e.target.value })}
+                            name="patientName"
+                            value={requestData.patientName}
+                            onChange={handleChange}
                         />
-                        <select
-                            className="glass-input w-full [&>option]:text-black"
-                            onChange={(e) => setRequestData({ ...requestData, bloodGroup: e.target.value })}
-                        >
-                            <option value="">Select Blood Group</option>
-                            <option value="A+">A+</option>
-                            <option value="A-">A-</option>
-                            <option value="B+">B+</option>
-                            <option value="B-">B-</option>
-                            <option value="O+">O+</option>
-                            <option value="O-">O-</option>
-                            <option value="AB+">AB+</option>
-                            <option value="AB-">AB-</option>
-                        </select>
-                        <input
-                            className="glass-input w-full"
-                            placeholder="Hospital/Location"
-                            onChange={(e) => setRequestData({ ...requestData, location: e.target.value })}
+
+                        <CustomSelect
+                            label="Blood Group"
+                            name="bloodGroup"
+                            value={requestData.bloodGroup}
+                            onChange={handleChange}
+                            options={bloodGroups}
+                            placeholder="Select Blood Group"
+                        // removed required to allow searching without it if logic permits, but typically required for finding matching donors
                         />
+
+                        <CustomSelect
+                            label="District"
+                            name="district"
+                            value={requestData.district}
+                            onChange={handleChange}
+                            options={apDistricts}
+                            placeholder="Select District"
+                        />
+
+                        <CustomSelect
+                            label="Town"
+                            name="nearestTown"
+                            value={requestData.nearestTown}
+                            onChange={handleChange}
+                            options={availableTowns}
+                            placeholder={requestData.district ? 'Select Town' : 'Select District First'}
+                            disabled={!requestData.district}
+                        />
+
                         <button className="btn-primary w-full" disabled={loading}>
                             {loading ? 'Searching...' : 'Find Donors'}
                         </button>

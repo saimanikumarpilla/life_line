@@ -7,11 +7,15 @@ import DonorDashboard from './pages/DonorDashboard';
 import HospitalDashboard from './pages/HospitalDashboard';
 import BloodBankDashboard from './pages/BloodBankDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import RecipientLogin from './pages/RecipientLogin';
+import RecipientDashboard from './pages/RecipientDashboard';
+import BloodBanksDirectory from './pages/BloodBanksDirectory';
 
 const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const isDashboard = ['/donor-dashboard', '/hospital-dashboard', '/blood-bank-dashboard', '/admin-dashboard'].includes(location.pathname);
+    // isDashboard is arguably not needed for the new logic, but keeping it if we need it later won't hurt, 
+    // unless it was the only thing used. We are now using user object.
 
     const handleLogout = () => {
         localStorage.removeItem('user');
@@ -25,26 +29,46 @@ const Navbar = () => {
                     LifeLine
                 </Link>
                 <div className="flex space-x-6 text-gray-300 items-center">
-                    <Link to="/" className="hover:text-white transition-colors">Home</Link>
-                    {!isDashboard ? (
-                        <>
+                    {(() => {
+                        const user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
+                        let homeLink = "/";
+                        const allowedRoles = ['blood_bank', 'hospital', 'admin', 'donor'];
+                        const showInventory = user && allowedRoles.includes(user.userType);
 
-                            <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
-                            <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
-                                Login
-                            </Link>
-                        </>
-                    ) : (
-                        <>
-                            <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
-                            <button
-                                onClick={handleLogout}
-                                className="px-4 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all text-sm font-medium"
-                            >
-                                Sign Out
-                            </button>
-                        </>
-                    )}
+                        if (user) {
+                            switch (user.userType) {
+                                case 'donor': homeLink = "/donor-dashboard"; break;
+                                case 'hospital': homeLink = "/hospital-dashboard"; break;
+                                case 'blood_bank': homeLink = "/blood-bank-dashboard"; break;
+                                case 'admin': homeLink = "/admin-dashboard"; break;
+                                case 'recipient': homeLink = "/recipient-dashboard"; break;
+                                default: homeLink = "/";
+                            }
+                        }
+
+                        return (
+                            <>
+                                <Link to={homeLink} className="hover:text-white transition-colors">Home</Link>
+                                <Link to="/blood-banks-directory" className="hover:text-white transition-colors">Blood Banks</Link>
+                                {showInventory && (
+                                    <Link to="/inventory" className="hover:text-white transition-colors">Inventory</Link>
+                                )}
+
+                                {!user ? (
+                                    <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
+                                        Login
+                                    </Link>
+                                ) : (
+                                    <button
+                                        onClick={handleLogout}
+                                        className="px-4 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all text-sm font-medium"
+                                    >
+                                        Sign Out
+                                    </button>
+                                )}
+                            </>
+                        );
+                    })()}
                 </div>
             </div>
         </nav>
@@ -87,7 +111,7 @@ const Home = () => {
                     className="flex justify-center gap-4"
                 >
                     <Link to="/register" className="btn-primary block">Register as Donor</Link>
-                    <Link to="/inventory" className="px-6 py-2 rounded-lg border border-white/20 hover:bg-white/5 transition-all block">Request Blood</Link>
+                    <Link to="/recipient-login" className="px-6 py-2 rounded-lg border border-white/20 hover:bg-white/5 transition-all block">Request Blood</Link>
                 </motion.div>
             </div>
         </div>
@@ -104,12 +128,15 @@ function App() {
                     <Route path="/register" element={<Register />} />
                     <Route path="/inventory" element={<Inventory />} />
                     <Route path="/login" element={<Login />} />
+                    <Route path="/recipient-login" element={<RecipientLogin />} />
+                    <Route path="/recipient-dashboard" element={<RecipientDashboard />} />
 
                     {/* Secured Routes (Auth logic handled in components for now) */}
                     <Route path="/donor-dashboard" element={<DonorDashboard />} />
                     <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
                     <Route path="/blood-bank-dashboard" element={<BloodBankDashboard />} />
                     <Route path="/admin-dashboard" element={<AdminDashboard />} />
+                    <Route path="/blood-banks-directory" element={<BloodBanksDirectory />} />
                 </Routes>
             </div>
         </Router>
