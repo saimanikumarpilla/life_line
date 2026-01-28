@@ -15,6 +15,22 @@ const AdminDashboard = () => {
         requests: 0
     });
     const [donorsList, setDonorsList] = useState([]);
+    const [hospitalsList, setHospitalsList] = useState([]);
+    const [bloodBanksList, setBloodBanksList] = useState([]);
+    const [userLoginsList, setUserLoginsList] = useState([]);
+    const [recipientsList, setRecipientsList] = useState([]);
+
+    // System Status State
+    const [systemStatus, setSystemStatus] = useState({
+        platform: 'Online',
+        dbConnection: 'Checking...',
+        lastActivity: 'N/A'
+    });
+
+    const scrollToSection = (id) => {
+        const element = document.getElementById(id);
+        if (element) element.scrollIntoView({ behavior: 'smooth' });
+    };
 
     // Photo Upload State
     const [photoFile, setPhotoFile] = useState(null);
@@ -76,6 +92,35 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleDeleteUser = async (collectionName, id) => {
+        if (!window.confirm("Are you sure you want to delete this record? This action cannot be undone.")) return;
+        try {
+            await deleteDoc(doc(db, collectionName, id));
+            alert("Record deleted successfully!");
+            // Refresh data (simplified by triggering full fetch, optimized in real app)
+            // Ideally we should just update local state, but calling fetchStats is easier for consistency
+            // We need to move fetchStats definition outside useEffect to call it here, or just reload page.
+            // For now, I'll update local state manually to avoid full re-fetch complexity or moving the function.
+            if (collectionName === "donors_list") setDonorsList(prev => prev.filter(item => item.id !== id));
+            if (collectionName === "hospitals_list") setHospitalsList(prev => prev.filter(item => item.id !== id));
+            if (collectionName === "blood_banks_list") setBloodBanksList(prev => prev.filter(item => item.id !== id));
+            if (collectionName === "login_details") setUserLoginsList(prev => prev.filter(item => item.id !== id));
+            if (collectionName === "recipients_temp") setRecipientsList(prev => prev.filter(item => item.id !== id));
+
+            // Also update stats for immediate feedback
+            setStats(prev => {
+                if (collectionName === "donors_list") return { ...prev, donors: prev.donors - 1 };
+                if (collectionName === "hospitals_list") return { ...prev, hospitals: prev.hospitals - 1 };
+                if (collectionName === "blood_banks_list") return { ...prev, bloodBanks: prev.bloodBanks - 1 };
+                return prev;
+            });
+
+        } catch (error) {
+            console.error("Error deleting record:", error);
+            alert("Failed to delete record: " + error.message);
+        }
+    };
+
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (!storedUser) {
@@ -89,11 +134,31 @@ const AdminDashboard = () => {
 
         const fetchStats = async () => {
             try {
-                const donorsRef = collection(db, "donors_list");
-                const donorsSnapshot = await getDocs(donorsRef);
+                // Fetch Donors
+                const donorsSnapshot = await getDocs(collection(db, "donors_list"));
+                const donors = donorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setDonorsList(donors);
 
+                // Fetch Hospitals
                 const hospitalsSnapshot = await getDocs(collection(db, "hospitals_list"));
+                const hospitals = hospitalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setHospitalsList(hospitals);
+
+                // Fetch Blood Banks
                 const banksSnapshot = await getDocs(collection(db, "blood_banks_list"));
+                const banks = banksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setBloodBanksList(banks);
+
+                // Fetch Login Details (Temporary Logins)
+                const loginsSnapshot = await getDocs(collection(db, "login_details"));
+                const logins = loginsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setUserLoginsList(logins);
+
+                // Fetch Temporary Recipient Logins
+                // Fetch Temporary Recipient Logins
+                const recipientsSnapshot = await getDocs(collection(db, "recipients_temp"));
+                const recipients = recipientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setRecipientsList(recipients);
 
                 setStats({
                     donors: donorsSnapshot.size,
@@ -102,14 +167,24 @@ const AdminDashboard = () => {
                     requests: 0 // Placeholder logic
                 });
 
-                const donors = donorsSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setDonorsList(donors);
+                // Calculate Last Activity
+                const allItems = [...donors, ...hospitals, ...banks, ...logins, ...recipients];
+                let mostRecent = null;
+                if (allItems.length > 0) {
+                    allItems.sort((a, b) => new Date(b.createdAt || b.loginTime || 0) - new Date(a.createdAt || a.loginTime || 0));
+                    const latest = allItems[0];
+                    mostRecent = latest.createdAt || latest.loginTime;
+                }
+
+                setSystemStatus({
+                    platform: 'Online',
+                    dbConnection: 'Healthy',
+                    lastActivity: mostRecent ? new Date(mostRecent).toLocaleString() : 'No recent activity'
+                });
 
             } catch (error) {
                 console.error("Error fetching stats:", error);
+                setSystemStatus(prev => ({ ...prev, dbConnection: 'Error' }));
             }
         };
 
@@ -124,7 +199,6 @@ const AdminDashboard = () => {
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-8">
                     <h1 className="text-3xl font-bold">Admin <span className="text-blood-red">Control Panel</span></h1>
-
                 </div>
 
                 {/* KPI Cards */}
@@ -228,6 +302,7 @@ const AdminDashboard = () => {
                                     <th className="pb-3 px-4">Location</th>
                                     <th className="pb-3 px-4">Phone</th>
                                     <th className="pb-3 px-4">Last Donation</th>
+                                    <th className="pb-3 px-4 text-right">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -247,12 +322,223 @@ const AdminDashboard = () => {
                                                     ? new Date(donor.lastDonationDate).toLocaleDateString()
                                                     : 'Never'}
                                             </td>
+                                            <td className="py-3 px-4 text-right">
+                                                <button
+                                                    onClick={() => handleDeleteUser("donors_list", donor.id)}
+                                                    className="text-red-500 hover:text-red-400 font-semibold text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="6" className="py-8 text-center text-gray-500">
+                                            No donors registered yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Hospitals List Table */}
+                <div id="hospitals-list" className="glass-card p-6 mb-8">
+                    <h2 className="text-xl font-bold mb-4">Registered Hospitals</h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-gray-300">
+                            <thead>
+                                <tr className="border-b border-white/10">
+                                    <th className="pb-3 px-4">Hospital Name</th>
+                                    <th className="pb-3 px-4">Contact</th>
+                                    <th className="pb-3 px-4">HFR ID</th>
+                                    <th className="pb-3 px-4">Location</th>
+                                    <th className="pb-3 px-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {hospitalsList.length > 0 ? (
+                                    hospitalsList.map((hospital) => (
+                                        <tr key={hospital.id} className="border-b border-white/5 hover:bg-white/10 transition-colors">
+                                            <td className="py-3 px-4 font-medium text-white">{hospital.hospitalName}</td>
+                                            <td className="py-3 px-4">{hospital.contactNumber}</td>
+                                            <td className="py-3 px-4">{hospital.hfrId}</td>
+                                            <td className="py-3 px-4">{hospital.town}, {hospital.district}</td>
+                                            <td className="py-3 px-4 text-right">
+                                                <button
+                                                    onClick={() => handleDeleteUser("hospitals_list", hospital.id)}
+                                                    className="text-red-500 hover:text-red-400 font-semibold text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
                                         <td colSpan="5" className="py-8 text-center text-gray-500">
-                                            No donors registered yet.
+                                            No hospitals registered yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Blood Banks List Table */}
+                <div className="glass-card p-6 mb-8">
+                    <h2 className="text-xl font-bold mb-4">Blood Banks</h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-gray-300">
+                            <thead>
+                                <tr className="border-b border-white/10">
+                                    <th className="pb-3 px-4">Name</th>
+                                    <th className="pb-3 px-4">Category</th>
+                                    <th className="pb-3 px-4">Contact</th>
+                                    <th className="pb-3 px-4">Location</th>
+                                    <th className="pb-3 px-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {bloodBanksList.length > 0 ? (
+                                    bloodBanksList.map((bank) => (
+                                        <tr key={bank.id} className="border-b border-white/5 hover:bg-white/10 transition-colors">
+                                            <td className="py-3 px-4 font-medium text-white">{bank.bloodBankName}</td>
+                                            <td className="py-3 px-4">
+                                                <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-bold border border-blue-500/30">
+                                                    {bank.category}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-4">{bank.contactNumber}</td>
+                                            <td className="py-3 px-4">{bank.town}, {bank.district}</td>
+                                            <td className="py-3 px-4 text-right">
+                                                <button
+                                                    onClick={() => handleDeleteUser("blood_banks_list", bank.id)}
+                                                    className="text-red-500 hover:text-red-400 font-semibold text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" className="py-8 text-center text-gray-500">
+                                            No blood banks registered yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* User Logins (Temporary Logins) Table */}
+                <div id="registered-users" className="glass-card p-6 mb-8 border border-yellow-500/20">
+                    <h2 className="text-xl font-bold mb-4 flex items-center justify-between">
+                        <span>Registered User Accounts</span>
+                        <span className="text-xs text-gray-400 font-normal">Donors, Hospitals, Banks</span>
+                    </h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-gray-300">
+                            <thead>
+                                <tr className="border-b border-white/10">
+                                    <th className="pb-3 px-4">Email</th>
+                                    <th className="pb-3 px-4">User Type</th>
+                                    <th className="pb-3 px-4">Password (Stored)</th>
+                                    <th className="pb-3 px-4">Created At</th>
+                                    <th className="pb-3 px-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {userLoginsList.length > 0 ? (
+                                    userLoginsList.map((login) => (
+                                        <tr key={login.id} className="border-b border-white/5 hover:bg-white/10 transition-colors">
+                                            <td className="py-3 px-4 font-medium text-white">{login.email}</td>
+                                            <td className="py-3 px-4 capitalize">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold border ${login.userType === 'admin' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
+                                                    login.userType === 'donor' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                                                        'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                                    }`}>
+                                                    {login.userType.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-4 font-mono text-sm text-gray-400">{login.password}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-400">
+                                                {login.createdAt ? new Date(login.createdAt).toLocaleDateString() : 'N/A'}
+                                            </td>
+                                            <td className="py-3 px-4 text-right">
+                                                <button
+                                                    onClick={() => handleDeleteUser("login_details", login.id)}
+                                                    className="text-red-500 hover:text-red-400 font-semibold text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" className="py-8 text-center text-gray-500">
+                                            No logins recorded yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Recipient Logins (Temporary) Table */}
+                <div id="system-logs" className="glass-card p-6 mb-8 border border-purple-500/20">
+                    <h2 className="text-xl font-bold mb-4 flex items-center justify-between">
+                        <span>Temporary Recipient Logins</span>
+                        <span className="text-xs text-gray-400 font-normal">Session-based Access</span>
+                    </h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-gray-300">
+                            <thead>
+                                <tr className="border-b border-white/10">
+                                    <th className="pb-3 px-4">Patient Name</th>
+                                    <th className="pb-3 px-4">Blood Group</th>
+                                    <th className="pb-3 px-4">Phone</th>
+                                    <th className="pb-3 px-4">Email</th>
+                                    <th className="pb-3 px-4">Login Time</th>
+                                    <th className="pb-3 px-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recipientsList.length > 0 ? (
+                                    recipientsList.map((recipient) => (
+                                        <tr key={recipient.id} className="border-b border-white/5 hover:bg-white/10 transition-colors">
+                                            <td className="py-3 px-4 font-medium text-white">{recipient.fullName}</td>
+                                            <td className="py-3 px-4">
+                                                <span className="px-2 py-1 rounded bg-blood-red/20 text-blood-red text-xs font-bold border border-blood-red/30">
+                                                    {recipient.bloodGroup}
+                                                </span>
+                                            </td>
+                                            <td className="py-3 px-4">{recipient.phone}</td>
+                                            <td className="py-3 px-4">{recipient.email}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-400">
+                                                {recipient.loginTime ? new Date(recipient.loginTime).toLocaleString() : 'N/A'}
+                                            </td>
+                                            <td className="py-3 px-4 text-right">
+                                                <button
+                                                    onClick={() => handleDeleteUser("recipients_temp", recipient.id)}
+                                                    className="text-red-500 hover:text-red-400 font-semibold text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="6" className="py-8 text-center text-gray-500">
+                                            No temporary logins recorded.
                                         </td>
                                     </tr>
                                 )}
@@ -268,15 +554,17 @@ const AdminDashboard = () => {
                         <div className="space-y-4">
                             <div className="flex justify-between items-center p-3 rounded bg-white/5">
                                 <span>Platform Status</span>
-                                <span className="text-green-400 text-sm font-semibold">Online</span>
+                                <span className="text-green-400 text-sm font-semibold">{systemStatus.platform}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 rounded bg-white/5">
                                 <span>Database Connection</span>
-                                <span className="text-green-400 text-sm font-semibold">Healthy</span>
+                                <span className={`text-sm font-semibold ${systemStatus.dbConnection === 'Healthy' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {systemStatus.dbConnection}
+                                </span>
                             </div>
                             <div className="flex justify-between items-center p-3 rounded bg-white/5">
-                                <span>Last Backup</span>
-                                <span className="text-gray-400 text-sm">2 hours ago</span>
+                                <span>Last Activity</span>
+                                <span className="text-gray-400 text-sm">{systemStatus.lastActivity}</span>
                             </div>
                         </div>
                     </div>
@@ -285,19 +573,19 @@ const AdminDashboard = () => {
                     <div className="glass-card p-6">
                         <h2 className="text-xl font-bold mb-4">Administrative Actions</h2>
                         <div className="grid grid-cols-2 gap-4">
-                            <button className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
+                            <button onClick={() => scrollToSection('registered-users')} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
                                 <h3 className="font-semibold text-white">Manage Users</h3>
-                                <p className="text-xs text-gray-400 mt-1">View/Edit registered users</p>
+                                <p className="text-xs text-gray-400 mt-1">Jump to User Accounts</p>
                             </button>
-                            <button className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
-                                <h3 className="font-semibold text-white">Verify Hospitals</h3>
-                                <p className="text-xs text-gray-400 mt-1">Approve pending registrations</p>
+                            <button onClick={() => scrollToSection('hospitals-list')} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
+                                <h3 className="font-semibold text-white">Manage Hospitals</h3>
+                                <p className="text-xs text-gray-400 mt-1">Jump to Hospital List</p>
                             </button>
-                            <button className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
+                            <button onClick={() => scrollToSection('system-logs')} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
                                 <h3 className="font-semibold text-white">System Logs</h3>
-                                <p className="text-xs text-gray-400 mt-1">View access logs & errors</p>
+                                <p className="text-xs text-gray-400 mt-1">View Recent Logins</p>
                             </button>
-                            <button className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
+                            <button onClick={() => alert("Broadcast Alert feature coming soon!")} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left">
                                 <h3 className="font-semibold text-white">Broadcast Alert</h3>
                                 <p className="text-xs text-gray-400 mt-1">Send notifications to all</p>
                             </button>

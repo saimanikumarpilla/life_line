@@ -51,9 +51,6 @@ const Navbar = () => {
                     <div className="flex space-x-6 text-gray-300 items-center">
                         <Link to={homeLink} className={`hover:text-white transition-colors ${isActive(homeLink) ? 'text-white font-medium' : ''}`}>Home</Link>
                         <Link to="/blood-banks-directory" className={`hover:text-white transition-colors ${isActive('/blood-banks-directory') ? 'text-white font-medium' : ''}`}>Blood Banks</Link>
-                        {showInventory && (
-                            <Link to="/inventory" className={`hover:text-white transition-colors ${isActive('/inventory') ? 'text-white font-medium' : ''}`}>Inventory</Link>
-                        )}
 
                         {!user ? (
                             <Link to="/login" className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-sm font-medium">
@@ -82,13 +79,6 @@ const Navbar = () => {
                     <Building2 size={20} />
                     <span className="text-[10px] font-medium">Banks</span>
                 </Link>
-
-                {showInventory && (
-                    <Link to="/inventory" className={`flex flex-col items-center gap-1 transition-colors ${isActive('/inventory') ? 'text-blood-red' : 'text-gray-400'}`}>
-                        <Package size={20} />
-                        <span className="text-[10px] font-medium">Stocks</span>
-                    </Link>
-                )}
 
                 {!user ? (
                     <Link to="/login" className={`flex flex-col items-center gap-1 transition-colors ${isActive('/login') ? 'text-blood-red' : 'text-gray-400'}`}>
@@ -222,7 +212,6 @@ function App() {
                 <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/register" element={<Register />} />
-                    <Route path="/inventory" element={<Inventory />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/recipient-login" element={<RecipientLogin />} />
                     <Route path="/recipient-dashboard" element={<RecipientDashboard />} />

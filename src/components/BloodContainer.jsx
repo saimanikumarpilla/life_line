@@ -86,7 +86,7 @@ const BloodContainer = ({ type, liters, percentage }) => {
                 {/* Label Overlay */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-30 pointer-events-none">
                     <h2 className="text-4xl font-black text-white drop-shadow-lg">{type}</h2>
-                    <p className="text-white/80 font-mono text-sm mt-1 drop-shadow-md">{liters}L</p>
+                    <p className="text-white/80 font-mono text-sm mt-1 drop-shadow-md">{liters}</p>
                 </div>
             </div>
 

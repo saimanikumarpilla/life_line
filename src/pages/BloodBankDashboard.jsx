@@ -1,13 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, addDoc, deleteDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { compressImage } from '../utils/imageCompressor';
 import { db } from '../firebase';
+import { apDistricts, apTowns } from '../utils/apData';
+import BloodContainer from '../components/BloodContainer';
+import RequestBlood from '../components/RequestBlood';
 
 const BloodBankDashboard = () => {
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
+
+    // Inventory State
+    const [inventory, setInventory] = useState({
+        "A+": 0, "A-": 0, "B+": 0, "B-": 0, "AB+": 0, "AB-": 0, "O+": 0, "O-": 0
+    });
+    const [isEditingInventory, setIsEditingInventory] = useState(false);
+    const [editingInventory, setEditingInventory] = useState({});
+    const [bankDocId, setBankDocId] = useState(null);
+
+    // Search State
+    const [searchDistrict, setSearchDistrict] = useState('');
+    const [searchTown, setSearchTown] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
 
     // Photo Upload State
     const [photoFile, setPhotoFile] = useState(null);
@@ -15,13 +32,77 @@ const BloodBankDashboard = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadedPhotos, setUploadedPhotos] = useState([]);
 
+    const fetchInventory = async (email) => {
+        if (!db || !email) return;
+        try {
+            const q = query(collection(db, "blood_banks_list"), where("email", "==", email));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+                setBankDocId(snapshot.docs[0].id);
+                const docData = snapshot.docs[0].data();
+                if (docData.inventory) {
+                    setInventory(docData.inventory);
+                    setEditingInventory(docData.inventory);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching inventory:", error);
+        }
+    };
+
+    const handleInventorySave = async () => {
+        if (!bankDocId) return;
+        try {
+            const bankRef = doc(db, "blood_banks_list", bankDocId);
+            await updateDoc(bankRef, {
+                inventory: editingInventory
+            });
+            setInventory(editingInventory);
+            setIsEditingInventory(false);
+            alert("Inventory updated successfully!");
+        } catch (error) {
+            console.error("Error updating inventory:", error);
+            alert("Failed to update inventory.");
+        }
+    };
+
+    const handleInventoryChange = (type, value) => {
+        setEditingInventory(prev => ({
+            ...prev,
+            [type]: parseInt(value) || 0
+        }));
+    };
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        if (!searchDistrict || !searchTown) {
+            alert("Please select both District and Town");
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const q = query(
+                collection(db, "blood_banks_list"),
+                where("district", "==", searchDistrict),
+                where("town", "==", searchTown)
+            );
+            const snapshot = await getDocs(q);
+            const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSearchResults(results);
+        } catch (error) {
+            console.error("Error searching blood banks:", error);
+            alert("Error fetching search results");
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
     const fetchPhotos = async (email) => {
         if (!db || !email) return;
         try {
             const q = query(collection(db, "camp_photos"), where("uploadedBy", "==", email));
             const snapshot = await getDocs(q);
             const photos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Client-side sort to avoid index requirements
             photos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             setUploadedPhotos(photos);
         } catch (error) {
@@ -38,20 +119,18 @@ const BloodBankDashboard = () => {
             return;
         }
         try {
-            // Compress and convert to Base64
             const base64Url = await compressImage(photoFile);
-
             await addDoc(collection(db, "camp_photos"), {
                 url: base64Url,
                 caption: photoCaption,
-                uploadedBy: user.email || 'blood_bank',
+                uploadedBy: user.email,
                 createdAt: new Date().toISOString()
             });
             alert("Photo Added Successfully!");
             setPhotoFile(null);
             setPhotoCaption('');
             fetchPhotos(user.email);
-            e.target.reset(); // Reset form
+            e.target.reset();
         } catch (error) {
             console.error("Error adding photo:", error);
             alert("Error: " + error.message);
@@ -81,6 +160,7 @@ const BloodBankDashboard = () => {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
         fetchPhotos(parsedUser.email);
+        fetchInventory(parsedUser.email);
     }, [navigate]);
 
     if (!user) return null;
@@ -90,48 +170,83 @@ const BloodBankDashboard = () => {
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-8">
                     <h1 className="text-3xl font-bold">Blood Bank <span className="text-blood-red">Management</span></h1>
-
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="glass-card p-6">
-                        <h3 className="text-gray-400 mb-2">Total Units Stored</h3>
-                        <p className="text-4xl font-bold text-white">1,240</p>
-                    </div>
-
-                    <div className="glass-card p-6">
-                        <h3 className="text-gray-400 mb-2">Units Dispatched</h3>
-                        <p className="text-4xl font-bold text-blue-400">45</p>
-                    </div>
-
-                    <div className="glass-card p-6">
-                        <h3 className="text-gray-400 mb-2">Pending Requests</h3>
-                        <p className="text-4xl font-bold text-yellow-500">12</p>
-                    </div>
-
-                    <div className="glass-card p-6">
-                        <h3 className="text-gray-400 mb-2">Critical Low Stock</h3>
-                        <p className="text-4xl font-bold text-red-500">A-</p>
-                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Inventory Management */}
-                    <div className="glass-card p-6 lg:col-span-2">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold">Blood Inventory Status</h2>
-                            <button className="text-sm text-blood-red hover:underline">Update Stock</button>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => (
-                                <div key={type} className="bg-white/5 p-4 rounded-lg text-center border border-white/10">
-                                    <div className="text-2xl font-bold mb-1">{type}</div>
-                                    <div className="text-sm text-gray-400">120 Units</div>
-                                    <div className="w-full bg-gray-700 h-1.5 mt-3 rounded-full overflow-hidden">
-                                        <div className="bg-green-500 h-full w-[60%]"></div>
+                    <div className="lg:col-span-2 space-y-8">
+                        {/* My Inventory Management */}
+                        <div className="glass-card p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold">My Inventory Status</h2>
+                                {!isEditingInventory ? (
+                                    <button
+                                        onClick={() => {
+                                            setEditingInventory(inventory);
+                                            setIsEditingInventory(true);
+                                        }}
+                                        className="text-sm text-blood-red hover:underline"
+                                    >
+                                        Update Stock
+                                    </button>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setIsEditingInventory(false)}
+                                            className="text-sm text-gray-400 hover:text-white"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleInventorySave}
+                                            className="text-sm font-bold text-green-500 hover:text-green-400"
+                                        >
+                                            Save Changes
+                                        </button>
                                     </div>
+                                )}
+                            </div>
+
+                            {/* Inventory Display: Toggle between Grid Inputs (Edit) and BloodContainer (View) */}
+                            {isEditingInventory ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => (
+                                        <div key={type} className="bg-white/5 p-4 rounded-lg text-center border border-white/10 relative">
+                                            <div className="text-2xl font-bold mb-1 text-blood-red">{type}</div>
+                                            <div className="mt-2">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={editingInventory[type] || 0}
+                                                    onChange={(e) => handleInventoryChange(type, e.target.value)}
+                                                    className="w-full bg-black/30 border border-white/20 rounded px-2 py-1 text-center text-white focus:border-blood-red outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            ) : (
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-x-8 gap-y-12 justify-items-center mt-8">
+                                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => {
+                                        const count = inventory[type] || 0;
+                                        // Assume 50 units is "full" tank for visualization
+                                        const percentage = Math.min((count / 50) * 100, 100);
+
+                                        return (
+                                            <BloodContainer
+                                                key={type}
+                                                type={type}
+                                                liters={`${count} Units`}
+                                                percentage={percentage}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Search Blood In Other Locations (Replaced with RequestBlood) */}
+                        <div id="request-blood-section">
+                            <RequestBlood />
                         </div>
                     </div>
 
