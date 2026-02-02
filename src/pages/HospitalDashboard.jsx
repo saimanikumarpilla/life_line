@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import BloodContainer from '../components/BloodContainer';
 import RequestBlood from '../components/RequestBlood';
@@ -23,13 +23,42 @@ const HospitalDashboard = () => {
         }
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-        fetchHospitalAndInventory(parsedUser.email);
+        fetchHospitalLocation(parsedUser.email);
     }, [navigate]);
 
-    const fetchHospitalAndInventory = async (email) => {
+    useEffect(() => {
+        if (!hospitalLocation.district || !hospitalLocation.town) return;
+
+        const banksQ = query(
+            collection(db, "blood_banks_list"),
+            where("district", "==", hospitalLocation.district),
+            where("town", "==", hospitalLocation.town)
+        );
+
+        const unsubscribe = onSnapshot(banksQ, (snapshot) => {
+            let aggregated = {
+                "A+": 0, "A-": 0, "B+": 0, "B-": 0, "AB+": 0, "AB-": 0, "O+": 0, "O-": 0
+            };
+
+            snapshot.forEach(doc => {
+                const bankData = doc.data();
+                if (bankData.inventory) {
+                    Object.keys(aggregated).forEach(type => {
+                        aggregated[type] += (parseInt(bankData.inventory[type]) || 0);
+                    });
+                }
+            });
+
+            setLocalInventory(aggregated);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [hospitalLocation]);
+
+    const fetchHospitalLocation = async (email) => {
         if (!db || !email) return;
         try {
-            // 1. Get Hospital Location
             const hospitalQ = query(collection(db, "hospitals_list"), where("email", "==", email));
             const hospitalSnap = await getDocs(hospitalQ);
 
@@ -43,36 +72,15 @@ const HospitalDashboard = () => {
             const { district, town } = hospitalData;
             setHospitalLocation({ district, town });
 
-            // 2. Fetch Blood Banks in same location
-            if (district && town) {
-                const banksQ = query(
-                    collection(db, "blood_banks_list"),
-                    where("district", "==", district),
-                    where("town", "==", town)
-                );
-                const banksSnap = await getDocs(banksQ);
-
-                let aggregated = {
-                    "A+": 0, "A-": 0, "B+": 0, "B-": 0, "AB+": 0, "AB-": 0, "O+": 0, "O-": 0
-                };
-
-                banksSnap.forEach(doc => {
-                    const bankData = doc.data();
-                    if (bankData.inventory) {
-                        Object.keys(aggregated).forEach(type => {
-                            aggregated[type] += (parseInt(bankData.inventory[type]) || 0);
-                        });
-                    }
-                });
-
-                setLocalInventory(aggregated);
+            if (!district || !town) {
+                setLoading(false);
             }
         } catch (error) {
             console.error("Error fetching data:", error);
-        } finally {
             setLoading(false);
         }
     };
+
 
     if (!user) return null;
 
