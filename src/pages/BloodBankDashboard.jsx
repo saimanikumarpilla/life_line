@@ -304,6 +304,68 @@ const BloodBankDashboard = () => {
         setCompletingRequestId(null);
     };
 
+    const handleApproveHospitalRequest = async (request) => {
+        if (!bankDocId) return;
+        // Check inventory
+        const currentStock = inventory[request.bloodGroup] || 0;
+        if (currentStock < request.units) {
+            alert(`Insufficient stock! You have ${currentStock} units of ${request.bloodGroup}, but request needs ${request.units}.`);
+            return;
+        }
+
+        if (!window.confirm(`Approve request of ${request.units} units of ${request.bloodGroup} for ${request.hospitalName}? This will deduct from inventory.`)) return;
+
+        try {
+            const batchPromises = [];
+
+            // 1. Update Request Status
+            batchPromises.push(updateDoc(doc(db, "hospital_requests", request.id), {
+                status: 'approved', // 'approved' implies 'shipped' or ready for pickup
+                approvedAt: new Date().toISOString()
+            }));
+
+            // 2. Deduct Inventory
+            batchPromises.push(updateDoc(doc(db, "blood_banks_list", bankDocId), {
+                [`inventory.${request.bloodGroup}`]: increment(-request.units)
+            }));
+            // Optimistic update
+            setInventory(prev => ({
+                ...prev,
+                [request.bloodGroup]: (prev[request.bloodGroup] || 0) - request.units
+            }));
+
+            // 3. Add to History (Outgoing)
+            const bankHistoryRef = collection(db, "blood_banks_list", bankDocId, "history");
+            batchPromises.push(addDoc(bankHistoryRef, {
+                hospitalName: request.hospitalName,
+                hospitalId: request.hospitalId,
+                bloodGroup: request.bloodGroup,
+                units: request.units,
+                date: new Date().toISOString(),
+                type: 'Outgoing'
+            }));
+
+            await Promise.all(batchPromises);
+            alert("Request Approved and Inventory Updated!");
+
+        } catch (error) {
+            console.error("Error approving request:", error);
+            alert("Failed to approve request.");
+        }
+    };
+
+    const handleRejectHospitalRequest = async (request) => {
+        if (!window.confirm("Reject this request?")) return;
+        try {
+            await updateDoc(doc(db, "hospital_requests", request.id), {
+                status: 'rejected',
+                rejectedAt: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error("Error rejecting:", error);
+        }
+    };
+
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (!storedUser) {
