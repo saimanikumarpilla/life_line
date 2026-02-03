@@ -416,16 +416,16 @@ const BloodBankDashboard = () => {
 
                         {/* Recent History Section */}
                         <div className="glass-card p-6">
-                            <h2 className="text-xl font-bold mb-4">Recent In-house Donations</h2>
+                            <h2 className="text-xl font-bold mb-4">History</h2>
                             {donationHistory.length === 0 ? (
-                                <div className="text-center py-4 text-gray-400">No donation history found.</div>
+                                <div className="text-center py-4 text-gray-400">No history found.</div>
                             ) : (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-sm text-gray-300">
                                         <thead className="border-b border-white/10 text-xs uppercase text-gray-500">
                                             <tr>
                                                 <th className="py-2">Date</th>
-                                                <th className="py-2">Donor</th>
+                                                <th className="py-2">Donor / Hospital</th>
                                                 <th className="py-2">Group</th>
                                                 <th className="py-2">Type</th>
                                             </tr>
@@ -434,7 +434,7 @@ const BloodBankDashboard = () => {
                                             {donationHistory.slice(0, 10).map(item => (
                                                 <tr key={item.id} className="hover:bg-white/5">
                                                     <td className="py-2">{item.date ? new Date(item.date).toLocaleDateString() : '--'}</td>
-                                                    <td className="py-2">{item.donorName || 'Unknown'}</td>
+                                                    <td className="py-2">{item.hospitalName || item.donorName || 'Unknown'}</td>
                                                     <td className="py-2 font-bold text-blood-red">{item.bloodGroup}</td>
                                                     <td className="py-2">{item.type || 'Incoming'}</td>
                                                 </tr>
