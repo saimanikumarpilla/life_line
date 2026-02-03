@@ -14,6 +14,7 @@ const Inventory = () => {
     const [myInventory, setMyInventory] = useState({
         "A+": 0, "A-": 0, "B+": 0, "B-": 0, "AB+": 0, "AB-": 0, "O+": 0, "O-": 0
     });
+    const [hospitalData, setHospitalData] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editBuffer, setEditBuffer] = useState({});
     const [hospitalDocId, setHospitalDocId] = useState(null);
@@ -47,6 +48,7 @@ const Inventory = () => {
             if (!snapshot.empty) {
                 setHospitalDocId(snapshot.docs[0].id);
                 const data = snapshot.docs[0].data();
+                setHospitalData(data);
                 if (data.inventory) {
                     setMyInventory(data.inventory);
                     setEditBuffer(data.inventory);
@@ -99,10 +101,18 @@ const Inventory = () => {
 
     const submitRequest = async () => {
         if (!user || !requestingBankId) return;
+
+        if (!hospitalDocId) {
+            alert("Error: Could not identify your hospital profile. Please ensure you are logged in as a hospital.");
+            // Attempt to refetch or just return
+            fetchMyInventory(user.email);
+            return;
+        }
+
         try {
             await addDoc(collection(db, "hospital_requests"), {
-                hospitalId: hospitalDocId, // Using the docId fetched in fetchMyInventory
-                hospitalName: user.hospitalName || "Hospital", // Fallback if data not in user object, ideally fetched
+                hospitalId: hospitalDocId,
+                hospitalName: hospitalData?.hospitalName || user.hospitalName || "Hospital",
                 hospitalEmail: user.email,
                 bloodBankId: requestingBankId,
                 bloodBankName: requestDetails.bankName,
@@ -115,7 +125,7 @@ const Inventory = () => {
             setRequestingBankId(null);
         } catch (error) {
             console.error("Error sending request:", error);
-            alert("Failed to send request.");
+            alert("Failed to send request: " + error.message);
         }
     };
 

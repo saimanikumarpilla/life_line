@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { findMatchingDonors } from '../utils/bloodLogic';
-import { collection, query, getDocs, where } from 'firebase/firestore';
+import { collection, query, getDocs, where, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { apDistricts, apTowns } from '../utils/apData';
 import CustomSelect from './CustomSelect';
@@ -19,6 +19,68 @@ const RequestBlood = () => {
     const [bankMatches, setBankMatches] = useState([]);
     const [loading, setLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
+
+    // Hospital Request Logic State
+    const [user, setUser] = useState(null);
+    const [hospitalData, setHospitalData] = useState(null);
+    const [requestingBankId, setRequestingBankId] = useState(null);
+    const [requestUnitDetails, setRequestUnitDetails] = useState({ units: 1, bankName: '' });
+
+    // Load User & Hospital Data on Mount
+    useState(() => {
+        const stored = localStorage.getItem('user');
+        if (stored) {
+            const u = JSON.parse(stored);
+            setUser(u);
+            if (u.userType === 'hospital') {
+                fetchHospitalData(u.email);
+            }
+        }
+    }, []);
+
+    const fetchHospitalData = async (email) => {
+        try {
+            const q = query(collection(db, "hospitals_list"), where("email", "==", email));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                setHospitalData({ id: snap.docs[0].id, ...snap.docs[0].data() });
+            }
+        } catch (e) {
+            console.error("Error fetching hospital profile", e);
+        }
+    };
+
+    const initRequest = (bank) => {
+        setRequestingBankId(bank.id);
+        setRequestUnitDetails({ units: 1, bankName: bank.bloodBankName });
+    };
+
+    const submitRequest = async () => {
+        if (!user || !requestingBankId) return;
+        if (!hospitalData) {
+            alert("Hospital profile not found. Please relogin.");
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, "hospital_requests"), {
+                hospitalId: hospitalData.id,
+                hospitalName: hospitalData.hospitalName || user.hospitalName || "Hospital",
+                hospitalEmail: user.email,
+                bloodBankId: requestingBankId,
+                bloodBankName: requestUnitDetails.bankName,
+                bloodGroup: requestData.bloodGroup || 'Any', // Default to value from search form
+                units: parseInt(requestUnitDetails.units),
+                status: 'pending',
+                date: new Date().toISOString()
+            });
+            alert("Request sent successfully!");
+            setRequestingBankId(null);
+        } catch (error) {
+            console.error("Error sending request:", error);
+            alert("Failed to send request.");
+        }
+    };
 
     // Get towns key based on district
     const availableTowns = requestData.district ? apTowns[requestData.district] || [] : [];
@@ -211,16 +273,46 @@ const RequestBlood = () => {
                                             )}
                                         </div>
 
-                                        <div className="flex justify-between items-end mt-3">
-                                            <div className="text-sm text-gray-300">
+                                        <div className="flex flex-col items-end gap-2 mt-3 w-full">
+                                            <div className="text-sm text-gray-300 w-full flex justify-between">
                                                 <div className="flex items-center gap-1">
                                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                                                     {bank.contactNumber}
                                                 </div>
                                             </div>
-                                            <button className="text-xs bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded border border-blue-500/20 hover:bg-blue-500/20 transition-colors">
-                                                Contact Bank
-                                            </button>
+
+                                            {/* Hospital Request UI */}
+                                            {user?.userType === 'hospital' ? (
+                                                requestingBankId === bank.id ? (
+                                                    <div className="w-full bg-black/40 p-2 rounded mt-2">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <span className="text-xs text-gray-400">Units:</span>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={requestUnitDetails.units}
+                                                                onChange={(e) => setRequestUnitDetails({ ...requestUnitDetails, units: e.target.value })}
+                                                                className="bg-white/10 border border-white/20 rounded w-16 px-1 text-sm text-white"
+                                                            />
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={submitRequest} className="flex-1 bg-green-600 hover:bg-green-700 text-xs py-1 rounded font-bold">Confirm</button>
+                                                            <button onClick={() => setRequestingBankId(null)} className="flex-1 bg-gray-600 hover:bg-gray-700 text-xs py-1 rounded">Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => initRequest(bank)}
+                                                        className="w-full text-xs bg-blood-red text-white px-3 py-2 rounded hover:bg-red-700 transition-colors font-bold mt-2"
+                                                    >
+                                                        Request Blood
+                                                    </button>
+                                                )
+                                            ) : (
+                                                <button className="text-xs bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded border border-blue-500/20 hover:bg-blue-500/20 transition-colors">
+                                                    Contact Bank
+                                                </button>
+                                            )}
                                         </div>
                                     </motion.div>
                                 );
