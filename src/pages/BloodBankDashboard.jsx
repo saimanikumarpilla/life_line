@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, addDoc, deleteDoc, updateDoc, doc, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, updateDoc, doc, query, where, getDocs, onSnapshot, orderBy, increment } from 'firebase/firestore';
 import { compressImage } from '../utils/imageCompressor';
 import { db } from '../firebase';
 import BloodContainer from '../components/BloodContainer';
@@ -15,8 +15,6 @@ const BloodBankDashboard = () => {
     const [inventory, setInventory] = useState({
         "A+": 0, "A-": 0, "B+": 0, "B-": 0, "AB+": 0, "AB-": 0, "O+": 0, "O-": 0
     });
-    const [isEditingInventory, setIsEditingInventory] = useState(false);
-    const [editingInventory, setEditingInventory] = useState({});
     const [bankDocId, setBankDocId] = useState(null);
     const [bankDetails, setBankDetails] = useState(null);
     const [donationHistory, setDonationHistory] = useState([]);
@@ -31,6 +29,11 @@ const BloodBankDashboard = () => {
     const [donationRequests, setDonationRequests] = useState([]);
     const [reschedulingId, setReschedulingId] = useState(null);
     const [rescheduleDate, setRescheduleDate] = useState('');
+    const [completingRequestId, setCompletingRequestId] = useState(null);
+    const [unitsCollected, setUnitsCollected] = useState(1);
+
+    // Hospital Requests State
+    const [hospitalRequests, setHospitalRequests] = useState([]);
 
     const fetchInventoryAndHistory = async (email) => {
         if (!db || !email) return;
@@ -44,7 +47,6 @@ const BloodBankDashboard = () => {
                 setBankDetails(docData);
                 if (docData.inventory) {
                     setInventory(docData.inventory);
-                    setEditingInventory(docData.inventory);
                 }
 
                 // Fetch History
@@ -60,28 +62,7 @@ const BloodBankDashboard = () => {
         }
     };
 
-    const handleInventorySave = async () => {
-        if (!bankDocId) return;
-        try {
-            const bankRef = doc(db, "blood_banks_list", bankDocId);
-            await updateDoc(bankRef, {
-                inventory: editingInventory
-            });
-            setInventory(editingInventory);
-            setIsEditingInventory(false);
-            alert("Inventory updated successfully!");
-        } catch (error) {
-            console.error("Error updating inventory:", error);
-            alert("Failed to update inventory.");
-        }
-    };
 
-    const handleInventoryChange = (type, value) => {
-        setEditingInventory(prev => ({
-            ...prev,
-            [type]: parseInt(value) || 0
-        }));
-    };
 
     const fetchPhotos = async (email) => {
         if (!db || !email) return;
@@ -154,8 +135,28 @@ const BloodBankDashboard = () => {
             setDonationRequests(requests);
         });
 
-        return () => unsubscribe();
-    }, [user, bankDetails]);
+        // Hospital Requests Listener
+        let unsubscribeHospital;
+        if (bankDocId) {
+            const hq = query(collection(db, "hospital_requests"), where("bloodBankId", "==", bankDocId));
+            unsubscribeHospital = onSnapshot(hq, (snapshot) => {
+                let hRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Filter active ones or recent history
+                hRequests = hRequests.filter(r => r.status === 'pending' || r.status === 'approved');
+                // Sort pending first, then by date
+                hRequests.sort((a, b) => {
+                    if (a.status === b.status) return new Date(b.date) - new Date(a.date);
+                    return a.status === 'pending' ? -1 : 1;
+                });
+                setHospitalRequests(hRequests);
+            });
+        }
+
+        return () => {
+            unsubscribe();
+            if (unsubscribeHospital) unsubscribeHospital();
+        };
+    }, [user, bankDetails, bankDocId]);
 
     const handleAcceptRequest = async (request) => {
         try {
@@ -223,8 +224,8 @@ const BloodBankDashboard = () => {
         }
     };
 
-    const handleCompleteDonation = async (request) => {
-        if (!window.confirm("Confirm that donation has been completed?")) return;
+    const handleCompleteDonation = async (request, units = 1) => {
+        // if (!window.confirm(`Confirm donation of ${units} unit(s)?`)) return; // Confirmation moved to UI
 
         try {
             const batchPromises = [];
@@ -233,6 +234,7 @@ const BloodBankDashboard = () => {
             // 1. Update Request Status
             batchPromises.push(updateDoc(doc(db, "donation_requests", request.id), {
                 status: 'donated',
+                unitsCollected: units,
                 completedAt: timestamp
             }));
 
@@ -242,7 +244,7 @@ const BloodBankDashboard = () => {
                 batchPromises.push(addDoc(donorHistoryRef, {
                     date: timestamp,
                     location: bankDetails?.hospitalName || "Blood Bank",
-                    units: 1,
+                    units: units,
                     bloodGroup: request.bloodGroup
                 }));
 
@@ -259,20 +261,21 @@ const BloodBankDashboard = () => {
                     donorName: request.donorName,
                     donorId: request.donorId,
                     bloodGroup: request.bloodGroup,
+                    units: units,
                     date: timestamp,
                     type: 'Incoming'
                 }));
             }
 
-            // 4. Update Inventory (Optional: Auto-increment?)
-            // Let's not auto-increment to be safe, user should manual update stock. 
-            // Or we could auto-increment:
+            // 4. Update Inventory - Auto-increment
             if (request.bloodGroup && bankDocId) {
-                const currentStock = inventory[request.bloodGroup] || 0;
                 batchPromises.push(updateDoc(doc(db, "blood_banks_list", bankDocId), {
-                    [`inventory.${request.bloodGroup}`]: currentStock + 1
+                    [`inventory.${request.bloodGroup}`]: increment(units)
                 }));
-                setInventory(prev => ({ ...prev, [request.bloodGroup]: currentStock + 1 }));
+                setInventory(prev => ({
+                    ...prev,
+                    [request.bloodGroup]: (prev[request.bloodGroup] || 0) + units
+                }));
             }
 
             await Promise.all(batchPromises);
@@ -285,6 +288,20 @@ const BloodBankDashboard = () => {
             console.error("Error completing donation:", error);
             alert("Failed to update records.");
         }
+    };
+
+    const startCompletion = (request) => {
+        setCompletingRequestId(request.id);
+        setUnitsCollected(1);
+    };
+
+    const confirmDonation = async (request) => {
+        if (unitsCollected < 1) {
+            alert("Please enter a valid number of units.");
+            return;
+        }
+        await handleCompleteDonation(request, unitsCollected);
+        setCompletingRequestId(null);
     };
 
     useEffect(() => {
@@ -314,70 +331,25 @@ const BloodBankDashboard = () => {
                         <div className="glass-card p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-xl font-bold">My Inventory Status</h2>
-                                {!isEditingInventory ? (
-                                    <button
-                                        onClick={() => {
-                                            setEditingInventory(inventory);
-                                            setIsEditingInventory(true);
-                                        }}
-                                        className="text-sm text-blood-red hover:underline"
-                                    >
-                                        Update Stock
-                                    </button>
-                                ) : (
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setIsEditingInventory(false)}
-                                            className="text-sm text-gray-400 hover:text-white"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleInventorySave}
-                                            className="text-sm font-bold text-green-500 hover:text-green-400"
-                                        >
-                                            Save Changes
-                                        </button>
-                                    </div>
-                                )}
                             </div>
 
-                            {/* Inventory Display: Toggle between Grid Inputs (Edit) and BloodContainer (View) */}
-                            {isEditingInventory ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => (
-                                        <div key={type} className="bg-white/5 p-4 rounded-lg text-center border border-white/10 relative">
-                                            <div className="text-2xl font-bold mb-1 text-blood-red">{type}</div>
-                                            <div className="mt-2">
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={editingInventory[type] || 0}
-                                                    onChange={(e) => handleInventoryChange(type, e.target.value)}
-                                                    className="w-full bg-black/30 border border-white/20 rounded px-2 py-1 text-center text-white focus:border-blood-red outline-none"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-x-8 gap-y-12 justify-items-center mt-8">
-                                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => {
-                                        const count = inventory[type] || 0;
-                                        // Assume 50 units is "full" tank for visualization
-                                        const percentage = Math.min((count / 50) * 100, 100);
+                            {/* Inventory Display */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-x-8 gap-y-12 justify-items-center mt-8">
+                                {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => {
+                                    const count = inventory[type] || 0;
+                                    // Assume 50 units is "full" tank for visualization
+                                    const percentage = Math.min((count / 50) * 100, 100);
 
-                                        return (
-                                            <BloodContainer
-                                                key={type}
-                                                type={type}
-                                                liters={`${count} Units`}
-                                                percentage={percentage}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            )}
+                                    return (
+                                        <BloodContainer
+                                            key={type}
+                                            type={type}
+                                            liters={`${count} Units`}
+                                            percentage={percentage}
+                                        />
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         {/* Recent History Section */}
@@ -428,8 +400,8 @@ const BloodBankDashboard = () => {
                                 ) : (
                                     donationRequests.map((req) => (
                                         <div key={req.id} className={`p-4 rounded-lg border relative group transition-colors ${req.status === 'not_attended' ? 'bg-red-900/10 border-red-500/30' :
-                                                req.status === 'accepted' ? 'bg-green-900/10 border-green-500/30' :
-                                                    'bg-white/5 border-white/10 hover:bg-white/10'
+                                            req.status === 'accepted' ? 'bg-green-900/10 border-green-500/30' :
+                                                'bg-white/5 border-white/10 hover:bg-white/10'
                                             }`}>
                                             <div className="flex justify-between items-start mb-2">
                                                 <h4 className="font-bold text-white max-w-[70%] truncate">{req.donorName}</h4>
@@ -493,12 +465,39 @@ const BloodBankDashboard = () => {
                                                 {/* ACCEPTED: Mark Donated, Not Attended, Reschedule */}
                                                 {req.status === 'accepted' && (
                                                     <>
-                                                        <button
-                                                            onClick={() => handleCompleteDonation(req)}
-                                                            className="flex-1 py-1 px-2 bg-blood-red hover:bg-red-700 rounded text-xs font-semibold"
-                                                        >
-                                                            Mark Donated
-                                                        </button>
+                                                        {completingRequestId === req.id ? (
+                                                            <div className="w-full bg-black/40 p-2 rounded mb-2 col-span-full">
+                                                                <p className="text-xs text-gray-400 mb-1">Units Collected:</p>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={unitsCollected}
+                                                                    onChange={(e) => setUnitsCollected(parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white mb-2"
+                                                                />
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => confirmDonation(req)}
+                                                                        className="flex-1 py-1 px-2 bg-green-600 hover:bg-green-700 rounded text-xs font-semibold"
+                                                                    >
+                                                                        Confirm
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setCompletingRequestId(null)}
+                                                                        className="flex-1 py-1 px-2 bg-gray-600 hover:bg-gray-700 rounded text-xs font-semibold"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => startCompletion(req)}
+                                                                className="flex-1 py-1 px-2 bg-blood-red hover:bg-red-700 rounded text-xs font-semibold"
+                                                            >
+                                                                Mark Donated
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => handleMissedRequest(req)}
                                                             className="py-1 px-2 bg-gray-600 hover:bg-gray-700 rounded text-xs font-semibold"
@@ -529,6 +528,50 @@ const BloodBankDashboard = () => {
                                                     </div>
                                                 )}
                                             </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Hospital Requests Section */}
+                        <div className="glass-card p-6 mt-6">
+                            <h2 className="text-xl font-bold mb-4">Hospital Requests ({hospitalRequests.length})</h2>
+                            <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                {hospitalRequests.length === 0 ? (
+                                    <p className="text-gray-400 text-center py-4">No incoming requests from hospitals.</p>
+                                ) : (
+                                    hospitalRequests.map(req => (
+                                        <div key={req.id} className="bg-white/5 border border-white/10 p-4 rounded-lg">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h4 className="font-bold text-lg text-white">{req.hospitalName}</h4>
+                                                    <p className="text-xs text-gray-400">Requesting: <span className="text-blood-red font-bold text-sm">{req.units} Units of {req.bloodGroup}</span></p>
+                                                    <p className="text-xs text-gray-500">{new Date(req.date).toLocaleDateString()}</p>
+                                                </div>
+                                                <div className={`text-xs px-2 py-1 rounded font-bold uppercase ${req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' :
+                                                    req.status === 'approved' ? 'bg-blue-500/20 text-blue-500' : ''
+                                                    }`}>
+                                                    {req.status === 'approved' ? 'Shipped' : req.status}
+                                                </div>
+                                            </div>
+
+                                            {req.status === 'pending' && (
+                                                <div className="flex gap-2 mt-3">
+                                                    <button
+                                                        onClick={() => handleApproveHospitalRequest(req)}
+                                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 rounded"
+                                                    >
+                                                        Approve & Send
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRejectHospitalRequest(req)}
+                                                        className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     ))
                                 )}

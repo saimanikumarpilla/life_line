@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, getDocs, updateDoc, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, updateDoc, query, where, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import RequestBlood from '../components/RequestBlood';
 import { apDistricts, apTowns } from '../utils/apData';
@@ -23,6 +23,8 @@ const Inventory = () => {
     const [searchTown, setSearchTown] = useState('');
     const [bankResults, setBankResults] = useState([]);
     const [isSearchingBanks, setIsSearchingBanks] = useState(false);
+    const [requestingBankId, setRequestingBankId] = useState(null);
+    const [requestDetails, setRequestDetails] = useState({ bloodGroup: 'A+', units: 1, bankName: '' });
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -87,6 +89,33 @@ const Inventory = () => {
             console.error("Error searching banks:", error);
         } finally {
             setIsSearchingBanks(false);
+        }
+    };
+
+    const initRequest = (bank) => {
+        setRequestingBankId(bank.id);
+        setRequestDetails({ bloodGroup: 'A+', units: 1, bankName: bank.bloodBankName });
+    };
+
+    const submitRequest = async () => {
+        if (!user || !requestingBankId) return;
+        try {
+            await addDoc(collection(db, "hospital_requests"), {
+                hospitalId: hospitalDocId, // Using the docId fetched in fetchMyInventory
+                hospitalName: user.hospitalName || "Hospital", // Fallback if data not in user object, ideally fetched
+                hospitalEmail: user.email,
+                bloodBankId: requestingBankId,
+                bloodBankName: requestDetails.bankName,
+                bloodGroup: requestDetails.bloodGroup,
+                units: parseInt(requestDetails.units),
+                status: 'pending',
+                date: new Date().toISOString()
+            });
+            alert("Request sent successfully!");
+            setRequestingBankId(null);
+        } catch (error) {
+            console.error("Error sending request:", error);
+            alert("Failed to send request.");
         }
     };
 
@@ -222,13 +251,49 @@ const Inventory = () => {
                                         <div key={bank.id} className="bg-white/5 p-4 rounded-lg border border-white/10">
                                             <h3 className="font-bold text-lg text-white">{bank.bloodBankName}</h3>
                                             <p className="text-sm text-gray-400 mb-2">{bank.town}, {bank.contactNumber}</p>
-                                            <div className="flex flex-wrap gap-2">
+                                            <div className="flex flex-wrap gap-2 mb-3">
                                                 {['A+', 'O+', 'B+', 'AB+'].map(type => (
                                                     <span key={type} className={`text-xs px-2 py-1 rounded ${bank.inventory && bank.inventory[type] > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                                                         {type}: {bank.inventory ? bank.inventory[type] || 0 : 0}
                                                     </span>
                                                 ))}
                                             </div>
+
+                                            {requestingBankId === bank.id ? (
+                                                <div className="bg-black/40 p-3 rounded text-sm space-y-2">
+                                                    <div>
+                                                        <label className="text-gray-400 text-xs">Blood Group</label>
+                                                        <select
+                                                            value={requestDetails.bloodGroup}
+                                                            onChange={(e) => setRequestDetails({ ...requestDetails, bloodGroup: e.target.value })}
+                                                            className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white"
+                                                        >
+                                                            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(t => <option key={t} value={t}>{t}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-gray-400 text-xs">Units</label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={requestDetails.units}
+                                                            onChange={(e) => setRequestDetails({ ...requestDetails, units: e.target.value })}
+                                                            className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 pt-2">
+                                                        <button onClick={submitRequest} className="flex-1 bg-blood-red hover:bg-red-700 py-1 rounded">Send Request</button>
+                                                        <button onClick={() => setRequestingBankId(null)} className="flex-1 bg-gray-600 hover:bg-gray-500 py-1 rounded">Cancel</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => initRequest(bank)}
+                                                    className="w-full py-2 bg-white/10 hover:bg-white/20 rounded text-sm font-semibold transition-colors"
+                                                >
+                                                    Request Blood
+                                                </button>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
