@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { findMatchingDonors } from '../utils/bloodLogic';
 import { collection, query, getDocs, where, addDoc } from 'firebase/firestore';
@@ -27,7 +27,7 @@ const RequestBlood = () => {
     const [requestUnitDetails, setRequestUnitDetails] = useState({ units: 1, bankName: '' });
 
     // Load User & Hospital Data on Mount
-    useState(() => {
+    useEffect(() => {
         const stored = localStorage.getItem('user');
         if (stored) {
             const u = JSON.parse(stored);
