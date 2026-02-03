@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, addDoc, deleteDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, updateDoc, doc, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { compressImage } from '../utils/imageCompressor';
 import { db } from '../firebase';
-import { apDistricts, apTowns } from '../utils/apData';
 import BloodContainer from '../components/BloodContainer';
 import RequestBlood from '../components/RequestBlood';
 
@@ -19,12 +18,8 @@ const BloodBankDashboard = () => {
     const [isEditingInventory, setIsEditingInventory] = useState(false);
     const [editingInventory, setEditingInventory] = useState({});
     const [bankDocId, setBankDocId] = useState(null);
-
-    // Search State
-    const [searchDistrict, setSearchDistrict] = useState('');
-    const [searchTown, setSearchTown] = useState('');
-    const [searchResults, setSearchResults] = useState([]);
-    const [isSearching, setIsSearching] = useState(false);
+    const [bankDetails, setBankDetails] = useState(null);
+    const [donationHistory, setDonationHistory] = useState([]);
 
     // Photo Upload State
     const [photoFile, setPhotoFile] = useState(null);
@@ -32,21 +27,36 @@ const BloodBankDashboard = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadedPhotos, setUploadedPhotos] = useState([]);
 
-    const fetchInventory = async (email) => {
+    // Donation Requests State
+    const [donationRequests, setDonationRequests] = useState([]);
+    const [reschedulingId, setReschedulingId] = useState(null);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+
+    const fetchInventoryAndHistory = async (email) => {
         if (!db || !email) return;
         try {
             const q = query(collection(db, "blood_banks_list"), where("email", "==", email));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
-                setBankDocId(snapshot.docs[0].id);
+                const bankId = snapshot.docs[0].id;
+                setBankDocId(bankId);
                 const docData = snapshot.docs[0].data();
+                setBankDetails(docData);
                 if (docData.inventory) {
                     setInventory(docData.inventory);
                     setEditingInventory(docData.inventory);
                 }
+
+                // Fetch History
+                const historyRef = collection(db, "blood_banks_list", bankId, "history");
+                // Note: Indexing might be required for orderBy, if so, remove orderBy and sort client-side
+                const historySnapshot = await getDocs(historyRef);
+                const historyData = historySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                historyData.sort((a, b) => new Date(b.date) - new Date(a.date));
+                setDonationHistory(historyData);
             }
         } catch (error) {
-            console.error("Error fetching inventory:", error);
+            console.error("Error fetching inventory/history:", error);
         }
     };
 
@@ -71,30 +81,6 @@ const BloodBankDashboard = () => {
             ...prev,
             [type]: parseInt(value) || 0
         }));
-    };
-
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (!searchDistrict || !searchTown) {
-            alert("Please select both District and Town");
-            return;
-        }
-        setIsSearching(true);
-        try {
-            const q = query(
-                collection(db, "blood_banks_list"),
-                where("district", "==", searchDistrict),
-                where("town", "==", searchTown)
-            );
-            const snapshot = await getDocs(q);
-            const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setSearchResults(results);
-        } catch (error) {
-            console.error("Error searching blood banks:", error);
-            alert("Error fetching search results");
-        } finally {
-            setIsSearching(false);
-        }
     };
 
     const fetchPhotos = async (email) => {
@@ -151,6 +137,156 @@ const BloodBankDashboard = () => {
         }
     };
 
+    // Donation Request Logic
+    useEffect(() => {
+        const q = query(collection(db, "donation_requests"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            let requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // Filter: Show Pending, Accepted (by me), or recently Missed
+            requests = requests.filter(r => {
+                if (r.status === 'donated' || r.status === 'rejected') return false;
+                if (r.status === 'accepted' || r.status === 'not_attended') return r.acceptedBy === user?.email || !r.acceptedBy;
+                return true;
+            });
+
+            requests.sort((a, b) => new Date(a.preferredDate) - new Date(b.preferredDate));
+            setDonationRequests(requests);
+        });
+
+        return () => unsubscribe();
+    }, [user, bankDetails]);
+
+    const handleAcceptRequest = async (request) => {
+        try {
+            const reqRef = doc(db, "donation_requests", request.id);
+            await updateDoc(reqRef, {
+                status: 'accepted',
+                acceptedBy: user.email,
+                bankName: bankDetails?.hospitalName || 'Blood Bank'
+            });
+            // alert("Appointment Accepted!");
+        } catch (error) {
+            console.error("Error accepting request:", error);
+            alert("Failed to accept request.");
+        }
+    };
+
+    const handleDeclineRequest = async (request) => {
+        if (!window.confirm("Decline this appointment?")) return;
+        try {
+            const reqRef = doc(db, "donation_requests", request.id);
+            await updateDoc(reqRef, {
+                status: 'rejected',
+                rejectedBy: user.email
+            });
+        } catch (error) {
+            console.error("Error rejecting request:", error);
+        }
+    };
+
+    const handleMissedRequest = async (request) => {
+        if (!window.confirm("Mark as Not Attended?")) return;
+        try {
+            const reqRef = doc(db, "donation_requests", request.id);
+            await updateDoc(reqRef, {
+                status: 'not_attended'
+            });
+        } catch (error) {
+            console.error("Error marking missed:", error);
+        }
+    };
+
+    const startReschedule = (request) => {
+        setReschedulingId(request.id);
+        // Pre-fill with existing date formatted for date input (YYYY-MM-DD)
+        const date = new Date(request.preferredDate);
+        setRescheduleDate(date.toISOString().split('T')[0]);
+    };
+
+    const submitReschedule = async (request) => {
+        if (!rescheduleDate) return;
+        try {
+            const newDateObj = new Date(rescheduleDate);
+            const reqRef = doc(db, "donation_requests", request.id);
+            await updateDoc(reqRef, {
+                preferredDate: newDateObj.toISOString(),
+                status: 'accepted', // Assuming if blood bank reschedules, it's confirmed
+                acceptedBy: user.email,
+                bankName: bankDetails?.hospitalName || 'Blood Bank',
+                rescheduledBy: 'bank'
+            });
+            setReschedulingId(null);
+            alert("Resheduled successfully");
+        } catch (error) {
+            console.error("Error rescheduling:", error);
+        }
+    };
+
+    const handleCompleteDonation = async (request) => {
+        if (!window.confirm("Confirm that donation has been completed?")) return;
+
+        try {
+            const batchPromises = [];
+            const timestamp = new Date().toISOString();
+
+            // 1. Update Request Status
+            batchPromises.push(updateDoc(doc(db, "donation_requests", request.id), {
+                status: 'donated',
+                completedAt: timestamp
+            }));
+
+            // 2. Add to Donor History
+            if (request.donorId) {
+                const donorHistoryRef = collection(db, "donors_list", request.donorId, "history");
+                batchPromises.push(addDoc(donorHistoryRef, {
+                    date: timestamp,
+                    location: bankDetails?.hospitalName || "Blood Bank",
+                    units: 1,
+                    bloodGroup: request.bloodGroup
+                }));
+
+                // Update last donation date
+                batchPromises.push(updateDoc(doc(db, "donors_list", request.donorId), {
+                    lastDonationDate: timestamp
+                }));
+            }
+
+            // 3. Add to Blood Bank History
+            if (bankDocId) {
+                const bankHistoryRef = collection(db, "blood_banks_list", bankDocId, "history");
+                batchPromises.push(addDoc(bankHistoryRef, {
+                    donorName: request.donorName,
+                    donorId: request.donorId,
+                    bloodGroup: request.bloodGroup,
+                    date: timestamp,
+                    type: 'Incoming'
+                }));
+            }
+
+            // 4. Update Inventory (Optional: Auto-increment?)
+            // Let's not auto-increment to be safe, user should manual update stock. 
+            // Or we could auto-increment:
+            if (request.bloodGroup && bankDocId) {
+                const currentStock = inventory[request.bloodGroup] || 0;
+                batchPromises.push(updateDoc(doc(db, "blood_banks_list", bankDocId), {
+                    [`inventory.${request.bloodGroup}`]: currentStock + 1
+                }));
+                setInventory(prev => ({ ...prev, [request.bloodGroup]: currentStock + 1 }));
+            }
+
+            await Promise.all(batchPromises);
+
+            // Refresh local history
+            fetchInventoryAndHistory(user.email);
+            alert("Donation completed! Stocks & History updated.");
+
+        } catch (error) {
+            console.error("Error completing donation:", error);
+            alert("Failed to update records.");
+        }
+    };
+
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (!storedUser) {
@@ -160,7 +296,7 @@ const BloodBankDashboard = () => {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
         fetchPhotos(parsedUser.email);
-        fetchInventory(parsedUser.email);
+        fetchInventoryAndHistory(parsedUser.email);
     }, [navigate]);
 
     if (!user) return null;
@@ -244,6 +380,37 @@ const BloodBankDashboard = () => {
                             )}
                         </div>
 
+                        {/* Recent History Section */}
+                        <div className="glass-card p-6">
+                            <h2 className="text-xl font-bold mb-4">Recent In-house Donations</h2>
+                            {donationHistory.length === 0 ? (
+                                <div className="text-center py-4 text-gray-400">No donation history found.</div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-gray-300">
+                                        <thead className="border-b border-white/10 text-xs uppercase text-gray-500">
+                                            <tr>
+                                                <th className="py-2">Date</th>
+                                                <th className="py-2">Donor</th>
+                                                <th className="py-2">Group</th>
+                                                <th className="py-2">Type</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {donationHistory.slice(0, 10).map(item => (
+                                                <tr key={item.id} className="hover:bg-white/5">
+                                                    <td className="py-2">{item.date ? new Date(item.date).toLocaleDateString() : '--'}</td>
+                                                    <td className="py-2">{item.donorName || 'Unknown'}</td>
+                                                    <td className="py-2 font-bold text-blood-red">{item.bloodGroup}</td>
+                                                    <td className="py-2">{item.type || 'Incoming'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Search Blood In Other Locations (Replaced with RequestBlood) */}
                         <div id="request-blood-section">
                             <RequestBlood />
@@ -252,6 +419,122 @@ const BloodBankDashboard = () => {
 
                     {/* Quick Actions & Notifications */}
                     <div className="space-y-6">
+                        {/* Donation Requests Management (Replaces Actions & Alerts) */}
+                        <div className="glass-card p-6">
+                            <h2 className="text-xl font-bold mb-4">Appointments ({donationRequests.length})</h2>
+                            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                {donationRequests.length === 0 ? (
+                                    <p className="text-gray-400 text-center py-4">No active requests.</p>
+                                ) : (
+                                    donationRequests.map((req) => (
+                                        <div key={req.id} className={`p-4 rounded-lg border relative group transition-colors ${req.status === 'not_attended' ? 'bg-red-900/10 border-red-500/30' :
+                                                req.status === 'accepted' ? 'bg-green-900/10 border-green-500/30' :
+                                                    'bg-white/5 border-white/10 hover:bg-white/10'
+                                            }`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="font-bold text-white max-w-[70%] truncate">{req.donorName}</h4>
+                                                <span className="text-blood-red font-bold text-lg">{req.bloodGroup}</span>
+                                            </div>
+
+                                            {/* Reschedule Input Mode */}
+                                            {reschedulingId === req.id ? (
+                                                <div className="my-2 bg-black/40 p-2 rounded">
+                                                    <p className="text-xs text-gray-400 mb-1">Select New Date:</p>
+                                                    <input
+                                                        type="date"
+                                                        value={rescheduleDate}
+                                                        onChange={(e) => setRescheduleDate(e.target.value)}
+                                                        className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white mb-2"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => submitReschedule(req)} className="text-xs bg-green-600 px-2 py-1 rounded">Save</button>
+                                                        <button onClick={() => setReschedulingId(null)} className="text-xs bg-gray-600 px-2 py-1 rounded">Cancel</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-gray-300 mb-1">
+                                                        <span className="text-gray-500">Date:</span> {new Date(req.preferredDate).toLocaleDateString()}
+                                                    </p>
+                                                    <p className="text-sm text-gray-300 mb-3">
+                                                        <span className="text-gray-500">Loc:</span> {req.town}, {req.district}
+                                                    </p>
+                                                </>
+                                            )}
+
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {/* Actions based on Status */}
+
+                                                {/* PENDING: Accept, Decline, Reschedule */}
+                                                {req.status === 'pending' && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleAcceptRequest(req)}
+                                                            className="flex-1 py-1 px-2 bg-green-600 hover:bg-green-700 rounded text-xs font-semibold"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeclineRequest(req)}
+                                                            className="flex-1 py-1 px-2 bg-red-600 hover:bg-red-700 rounded text-xs font-semibold"
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                        <button
+                                                            onClick={() => startReschedule(req)}
+                                                            className="py-1 px-2 border border-white/20 hover:bg-white/10 rounded text-xs"
+                                                            title="Reschedule"
+                                                        >
+                                                            📅
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                {/* ACCEPTED: Mark Donated, Not Attended, Reschedule */}
+                                                {req.status === 'accepted' && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleCompleteDonation(req)}
+                                                            className="flex-1 py-1 px-2 bg-blood-red hover:bg-red-700 rounded text-xs font-semibold"
+                                                        >
+                                                            Mark Donated
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleMissedRequest(req)}
+                                                            className="py-1 px-2 bg-gray-600 hover:bg-gray-700 rounded text-xs font-semibold"
+                                                            title="Mark Not Attended"
+                                                        >
+                                                            Missed
+                                                        </button>
+                                                        <button
+                                                            onClick={() => startReschedule(req)}
+                                                            className="py-1 px-2 border border-white/20 hover:bg-white/10 rounded text-xs"
+                                                            title="Reschedule"
+                                                        >
+                                                            📅
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                {/* NOT ATTENDED: Reschedule Only */}
+                                                {req.status === 'not_attended' && (
+                                                    <div className="w-full flex items-center justify-between">
+                                                        <span className="text-xs text-red-400 italic">Donor Missed Appointment</span>
+                                                        <button
+                                                            onClick={() => startReschedule(req)}
+                                                            className="py-1 px-2 border border-white/20 hover:bg-white/10 rounded text-xs"
+                                                        >
+                                                            Reschedule
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
                         {/* Add Camp Photo Widget */}
                         <div className="glass-card p-6">
                             <h2 className="text-xl font-bold mb-4">Add Camp Photo</h2>
@@ -283,62 +566,6 @@ const BloodBankDashboard = () => {
                                     {isUploading ? 'Uploading...' : 'Upload Photo'}
                                 </button>
                             </form>
-                        </div>
-
-                        {/* Recent Uploads (Mini Gallery) */}
-                        {uploadedPhotos.length > 0 && (
-                            <div className="glass-card p-6">
-                                <h2 className="text-xl font-bold mb-4">Your Uploads</h2>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {uploadedPhotos.map((photo) => (
-                                        <div key={photo.id} className="relative group rounded-lg overflow-hidden border border-white/10 aspect-video">
-                                            <img
-                                                src={photo.url}
-                                                alt={photo.caption}
-                                                className="w-full h-full object-cover"
-                                            />
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <button
-                                                    onClick={() => handleDeletePhoto(photo.id)}
-                                                    className="bg-red-600 text-white p-1.5 rounded-full hover:bg-red-700 transition-colors"
-                                                    title="Delete Photo"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="glass-card p-6">
-                            <h2 className="text-xl font-bold mb-4">Actions</h2>
-                            <div className="space-y-3">
-                                <button className="w-full py-2 btn-primary">Process Donation</button>
-                                <button className="w-full py-2 border border-white/20 rounded-lg hover:bg-white/5">Organize Camp</button>
-                                <button className="w-full py-2 border border-white/20 rounded-lg hover:bg-white/5">Dispatch Units</button>
-                            </div>
-                        </div>
-
-                        <div className="glass-card p-6">
-                            <h2 className="text-xl font-bold mb-4">Recent Alerts</h2>
-                            <ul className="space-y-3 text-sm text-gray-400">
-                                <li className="flex items-start gap-2">
-                                    <span className="w-2 h-2 mt-1.5 rounded-full bg-red-500 shrink-0"></span>
-                                    Urgent request for O- from City Hospital
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <span className="w-2 h-2 mt-1.5 rounded-full bg-yellow-500 shrink-0"></span>
-                                    Stock low for AB- blood group
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <span className="w-2 h-2 mt-1.5 rounded-full bg-green-500 shrink-0"></span>
-                                    Donation Camp scheduled for tomorrow
-                                </li>
-                            </ul>
                         </div>
                     </div>
                 </div>
