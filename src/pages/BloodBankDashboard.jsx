@@ -263,7 +263,7 @@ const BloodBankDashboard = () => {
                     bloodGroup: request.bloodGroup,
                     units: units,
                     date: timestamp,
-                    type: 'Incoming'
+                    type: 'received'
                 }));
             }
 
@@ -334,7 +334,7 @@ const BloodBankDashboard = () => {
                 [request.bloodGroup]: (prev[request.bloodGroup] || 0) - request.units
             }));
 
-            // 3. Add to History (Outgoing)
+            // 3. Add to History (delivered)
             const bankHistoryRef = collection(db, "blood_banks_list", bankDocId, "history");
             batchPromises.push(addDoc(bankHistoryRef, {
                 hospitalName: request.hospitalName,
@@ -342,7 +342,7 @@ const BloodBankDashboard = () => {
                 bloodGroup: request.bloodGroup,
                 units: request.units,
                 date: new Date().toISOString(),
-                type: 'Outgoing'
+                type: 'delivered'
             }));
 
             await Promise.all(batchPromises);
@@ -436,7 +436,7 @@ const BloodBankDashboard = () => {
                                                     <td className="py-2">{item.date ? new Date(item.date).toLocaleDateString() : '--'}</td>
                                                     <td className="py-2">{item.hospitalName || item.donorName || 'Unknown'}</td>
                                                     <td className="py-2 font-bold text-blood-red">{item.bloodGroup}</td>
-                                                    <td className="py-2">{item.type || 'Incoming'}</td>
+                                                    <td className="py-2">{item.type || 'received'}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -601,7 +601,7 @@ const BloodBankDashboard = () => {
                             <h2 className="text-xl font-bold mb-4">Hospital Requests ({hospitalRequests.length})</h2>
                             <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
                                 {hospitalRequests.length === 0 ? (
-                                    <p className="text-gray-400 text-center py-4">No incoming requests from hospitals.</p>
+                                    <p className="text-gray-400 text-center py-4">No received requests from hospitals.</p>
                                 ) : (
                                     hospitalRequests.map(req => (
                                         <div key={req.id} className="bg-white/5 border border-white/10 p-4 rounded-lg">

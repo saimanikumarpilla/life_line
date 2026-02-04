@@ -122,7 +122,7 @@ const HospitalDashboard = () => {
                 [request.bloodGroup]: (prev[request.bloodGroup] || 0) + request.units
             }));
 
-            // 3. Add to History (Incoming)
+            // 3. Add to History (received)
             // Create a subcollection 'history' for the hospital if not exists
             const historyRef = collection(db, "hospitals_list", hospitalDocId, "history");
             batchPromises.push(addDoc(historyRef, {
@@ -131,7 +131,7 @@ const HospitalDashboard = () => {
                 bloodGroup: request.bloodGroup,
                 units: request.units,
                 date: new Date().toISOString(),
-                type: 'Incoming'
+                type: 'received'
             }));
 
             await Promise.all(batchPromises);
@@ -260,9 +260,9 @@ const HospitalDashboard = () => {
                                             <td className="py-3">{req.units}</td>
                                             <td className="py-3">
                                                 <span className={`px-2 py-1 rounded text-xs uppercase font-bold ${req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' :
-                                                        req.status === 'approved' ? 'bg-blue-500/20 text-blue-500' :
-                                                            req.status === 'completed' ? 'bg-green-500/20 text-green-500' :
-                                                                'bg-red-500/20 text-red-500'
+                                                    req.status === 'approved' ? 'bg-blue-500/20 text-blue-500' :
+                                                        req.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+                                                            'bg-red-500/20 text-red-500'
                                                     }`}>
                                                     {req.status === 'approved' ? 'Shipped' : req.status}
                                                 </span>
