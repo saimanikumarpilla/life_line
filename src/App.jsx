@@ -1,4 +1,4 @@
-import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Register from './pages/Register';
 import Inventory from './pages/Inventory';
@@ -206,25 +206,23 @@ const Home = () => {
 
 function App() {
     return (
-        <Router>
-            <div className="text-white">
-                <Navbar />
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/register" element={<Register />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/recipient-login" element={<RecipientLogin />} />
-                    <Route path="/recipient-dashboard" element={<RecipientDashboard />} />
+        <div className="text-white">
+            <Navbar />
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/recipient-login" element={<RecipientLogin />} />
+                <Route path="/recipient-dashboard" element={<RecipientDashboard />} />
 
-                    {/* Secured Routes (Auth logic handled in components for now) */}
-                    <Route path="/donor-dashboard" element={<DonorDashboard />} />
-                    <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
-                    <Route path="/blood-bank-dashboard" element={<BloodBankDashboard />} />
-                    <Route path="/admin-dashboard" element={<AdminDashboard />} />
-                    <Route path="/blood-banks-directory" element={<BloodBanksDirectory />} />
-                </Routes>
-            </div>
-        </Router>
+                {/* Secured Routes (Auth logic handled in components for now) */}
+                <Route path="/donor-dashboard" element={<DonorDashboard />} />
+                <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
+                <Route path="/blood-bank-dashboard" element={<BloodBankDashboard />} />
+                <Route path="/admin-dashboard" element={<AdminDashboard />} />
+                <Route path="/blood-banks-directory" element={<BloodBanksDirectory />} />
+            </Routes>
+        </div>
     )
 }
 
